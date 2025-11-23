@@ -233,7 +233,7 @@ def generate_order_rows(
     discount_probability = max(0.0, min(1.0, discount_probability))
 
     rows = []
-    for _ in range(order_count):
+    for idx in range(order_count):
         order_name = generate_order_name()
         account_id, currency = random.choice(account_choices)
         row = {
@@ -241,6 +241,7 @@ def generate_order_rows(
             "order_name": order_name,
             "order_display_name": order_name,
             "order_description": generate_order_description(),
+            "order_origin": f"CSV IMPORT - {idx + 1}",
             "order_invoice_note": generate_order_invoice_note(order_name),
             "order_currency": currency or default_currency,
             "order_account_id": account_id,
