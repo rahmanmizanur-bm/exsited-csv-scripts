@@ -1292,6 +1292,8 @@ def generate_account_data(num_rows=100, custom_attributes=None, contact_count=5,
             order_count,
             account_rows=data,
             custom_attributes=order_csv_generator.get_default_order_custom_attributes(),
+            item_config=order_csv_generator.default_item_config(),
+            line_item_custom_attributes=order_csv_generator.get_default_line_item_custom_attributes(),
         )
         print(f"Order file saved to: {order_filepath}")
 
