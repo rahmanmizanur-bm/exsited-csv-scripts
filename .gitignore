@@ -29,3 +29,6 @@ htmlcov/
 Thumbs.db
 .idea/
 .vscode/
+
+# Generator configs
+*_config.json

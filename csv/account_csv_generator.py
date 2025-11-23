@@ -281,6 +281,36 @@ def blank_contact(index):
     ]
     return {f"{prefix}{field}": '' for field in fields}
 
+
+def get_default_custom_attributes():
+    """Return the default set of 10 custom attributes when requested."""
+    dropdown_options = ["A", "B", "C", "D"]
+    radio_options = [str(i) for i in range(1, 51)]
+
+    def make_attr(name, attr_type, options=None, quantity_min=None, quantity_max=None):
+        return {
+            "column_name": f"ca_account_attr_{name}",
+            "type": attr_type,
+            "constant": False,
+            "value": None,
+            "options": options or [],
+            "quantity_min": quantity_min,
+            "quantity_max": quantity_max,
+        }
+
+    return [
+        make_attr("CA_BOOL", "bool"),
+        make_attr("CA_CHECKBOX", "checkboxes", options=dropdown_options),
+        make_attr("CA_DATE", "date"),
+        make_attr("CA_DROPDOWN", "dropdown", options=dropdown_options),
+        make_attr("CA_DROPDOWN_WITH_MULTISELECT", "dropdown_multi", options=dropdown_options),
+        make_attr("CA_MONEY", "money"),
+        make_attr("CA_QUANTITY", "quantity", quantity_min=1, quantity_max=50),
+        make_attr("CA_NUMBER", "number"),
+        make_attr("CA_RADIO", "radio", options=radio_options),
+        make_attr("CA_TEXT", "text"),
+    ]
+
 def prompt_custom_attributes():
     """
     Prompt user for custom attributes to add to each account row.
@@ -304,6 +334,13 @@ def prompt_custom_attributes():
     attributes = []
     if count == 0:
         return attributes
+
+    if count == 10:
+        default_choice = input(
+            "Use the default set of 10 custom attributes? (y/N, default n): "
+        ).strip().lower()
+        if default_choice in ("y", "yes"):
+            return get_default_custom_attributes()
 
     for i in range(1, count + 1):
         print(f"\nCustom attribute {i}/{count}")
@@ -372,12 +409,41 @@ def prompt_custom_attributes():
         }
         valid_types = set(type_map.values())
 
+        quantity_min = None
+        quantity_max = None
+
         while True:
             raw_type = input("  Enter type (1-11 or name): ").strip().lower()
             attr_type = type_map.get(raw_type)
             if attr_type in valid_types:
                 break
             print("  Invalid type. Please enter 1-11 or a valid type name.")
+
+        if attr_type == "quantity":
+            quantity_min = 1
+            quantity_max = 50
+            while True:
+                range_raw = input(
+                    "  Enter quantity range as min-max (default 1-50): "
+                ).strip()
+                if range_raw == "":
+                    break
+                parts = [p.strip() for p in range_raw.replace(" ", "").split("-") if p.strip()]
+                if len(parts) != 2:
+                    print("  Please enter range in format min-max, e.g., 5-90.")
+                    continue
+                try:
+                    min_val = int(parts[0])
+                    max_val = int(parts[1])
+                except ValueError:
+                    print("  Please enter whole numbers for min and max.")
+                    continue
+                if min_val > max_val:
+                    print("  Min cannot be greater than max.")
+                    continue
+                quantity_min = min_val
+                quantity_max = max_val
+                break
 
         # For dropdown / multiselect / checkboxes / radio, capture options list
         options = []
@@ -433,6 +499,8 @@ def prompt_custom_attributes():
                 'constant': is_constant,
                 'value': value,
                 'options': options,
+                'quantity_min': quantity_min,
+                'quantity_max': quantity_max,
             }
         )
 
@@ -1103,7 +1171,17 @@ def generate_account_data(num_rows=100, custom_attributes=None, contact_count=5,
             else:
                 if attr_type == 'bool':
                     value = random.choice([True, False])
-                elif attr_type in ('number', 'quantity'):
+                elif attr_type == 'quantity':
+                    qmin = attr.get('quantity_min')
+                    qmax = attr.get('quantity_max')
+                    if qmin is None or qmax is None:
+                        qmin, qmax = 1, 50
+                    qmin = int(qmin)
+                    qmax = int(qmax)
+                    if qmin > qmax:
+                        qmin, qmax = qmax, qmin
+                    value = random.randint(qmin, qmax)
+                elif attr_type == 'number':
                     value = random.randint(0, 1000)
                 elif attr_type == 'money':
                     value = round(random.uniform(1, 10000), 2)
@@ -1213,6 +1291,7 @@ def generate_account_data(num_rows=100, custom_attributes=None, contact_count=5,
         order_filepath = order_csv_generator.generate_order_csv(
             order_count,
             account_rows=data,
+            custom_attributes=order_csv_generator.get_default_order_custom_attributes(),
         )
         print(f"Order file saved to: {order_filepath}")
 
@@ -1292,12 +1371,12 @@ if __name__ == "__main__":
             )
         else:
             # Interactive prompts, with optional config saving
-            print("Custom attribute setup:")
-            custom_attrs = prompt_custom_attributes()
             print("Account address setup:")
             account_address_cfg = prompt_account_address_config()
             print("Contact setup:")
             contact_count = prompt_contact_count()
+            print("Custom attribute setup:")
+            custom_attrs = prompt_custom_attributes()
             print("Payment method setup:")
             payment_cfg = prompt_payment_methods()
             print("Tax setup:")
