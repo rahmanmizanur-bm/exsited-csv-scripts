@@ -283,8 +283,11 @@ def generate_order_rows(
                 row["line_item_discount_type"] = ""
                 row["line_item_discount"] = ""
 
-            tax_choices = ["TRUE", "FALSE", ""]
-            row["line_item_tax_exempt"] = random.choice(tax_choices)
+            # Keep tax_exempt mostly blank, only mark TRUE occasionally so system defaults remain FALSE
+            if random.random() < 0.1:
+                row["line_item_tax_exempt"] = "TRUE"
+            else:
+                row["line_item_tax_exempt"] = ""
 
             for attr in line_item_custom_attributes:
                 row[attr["column_name"]] = _random_value_for_attr(attr)
