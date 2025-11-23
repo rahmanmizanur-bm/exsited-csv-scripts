@@ -3,8 +3,13 @@ import random
 from datetime import datetime
 from faker import Faker
 import argparse
+import json
+from pathlib import Path
+
+import order_csv_generator
 
 fake = Faker('en_AU')
+DEFAULT_CONFIG_PATH = Path(__file__).resolve().parent / "account_generator_config.json"
 
 def generate_account_id():
     """Generate unique account ID in format CSV-ACC-XXXXX-CUS or CSV-ACC-XXXXX-SUP"""
@@ -171,6 +176,41 @@ def generate_address_extra_lines():
         ]
     )
     return line3, line4, line5
+
+
+def generate_account_address_fields(line_count, country='Australia'):
+    """
+    Generate base account address data with configurable line count.
+
+    Args:
+        line_count: number of address lines to populate (1-5)
+        country: fallback country value
+    """
+    line_count = max(1, min(5, int(line_count or 1)))
+
+    address_line_1 = generate_address()
+    address_line_2 = generate_address_line_2()
+    address_line_3, address_line_4, address_line_5 = generate_address_extra_lines()
+    lines = [
+        address_line_1,
+        address_line_2,
+        address_line_3,
+        address_line_4,
+        address_line_5,
+    ]
+
+    row_fields = {}
+    for idx in range(5):
+        key = f"address_1_address_line_{idx + 1}"
+        row_fields[key] = lines[idx] if idx < line_count else ""
+
+    row_fields["address_1_post_code"] = generate_postcode()
+    row_fields["address_1_city"] = fake.city()
+    row_fields["address_1_state"] = fake.state()
+    row_fields["address_1_country"] = country
+    row_fields["address_1_is_default_billing"] = "YES"
+    row_fields["address_1_is_default_shipping"] = "YES"
+    return row_fields
 
 
 def generate_contact(index, domain):
@@ -399,6 +439,29 @@ def prompt_custom_attributes():
     return attributes
 
 
+def prompt_account_address_config():
+    """
+    Prompt how many address lines should be populated for the primary account address.
+
+    Returns dict with:
+        line_count: int
+    """
+    while True:
+        raw = input(
+            "How many address lines should each account have? (1-5, default 1): "
+        ).strip()
+        if raw == '':
+            return {"line_count": 1}
+        try:
+            value = int(raw)
+        except ValueError:
+            print("Please enter a whole number between 1 and 5.")
+            continue
+        if 1 <= value <= 5:
+            return {"line_count": value}
+        print("Please enter a whole number between 1 and 5.")
+
+
 def prompt_contact_count():
     """Prompt user for how many contacts (1-5) per account."""
     while True:
@@ -508,19 +571,21 @@ def prompt_payment_methods():
                 break
             print("Please enter a whole number 1 or greater.")
 
-        if ot_count > 1:
-            ot_processor_raw = input(
-                "Enter OTHER processor(s) (use uuid, comma-separated for multiple, default 1): "
-            ).strip()
-        else:
-            ot_processor_raw = input(
-                "Enter OTHER processor (use uuid, default 1): "
-            ).strip()
-        if ot_processor_raw:
-            ot_processors = [p.strip() for p in ot_processor_raw.split(",") if p.strip()]
-        else:
-            # Default processor value if user presses Enter
-            ot_processors = ["1"]
+        # Require at least one processor UUID
+        while True:
+            if ot_count > 1:
+                ot_processor_raw = input(
+                    "Enter OTHER processor(s) (use uuid, comma-separated for multiple): "
+                ).strip()
+            else:
+                ot_processor_raw = input(
+                    "Enter OTHER processor (use uuid): "
+                ).strip()
+            if ot_processor_raw:
+                ot_processors = [p.strip() for p in ot_processor_raw.split(",") if p.strip()]
+                if ot_processors:
+                    break
+            print("Please enter at least one valid processor uuid.")
         ot_processor = ot_processors[0] if ot_processors else ""
 
     return {
@@ -607,6 +672,56 @@ def prompt_account_custom_form_config(total_accounts):
     return {"form_names": form_names, "assign_percent": assign_percent}
 
 
+def prompt_account_user_team_config():
+    """
+    Prompt user for account_user_team configuration.
+
+    Returns dict with:
+        team_names: list[str]
+    """
+    use_team = input("Do you want account_user_team column? (y/n, default n): ").strip().lower()
+    if use_team not in ("y", "yes"):
+        return {"team_names": []}
+
+    while True:
+        raw_names = input(
+            "Enter account user team name(s) (comma-separated, e.g., TeamA,TeamB): "
+        ).strip()
+        team_names = [g.strip() for g in raw_names.split(",") if g.strip()]
+        if team_names:
+            break
+        print("Please enter at least one team name.")
+
+    return {"team_names": team_names}
+
+
+def prompt_order_generation_config(default_order_count):
+    """
+    Prompt whether to generate an order CSV and how many records.
+
+    Args:
+        default_order_count: suggested order count
+    """
+    raw = input("Do you also want to generate an order CSV? (y/n, default n): ").strip().lower()
+    if raw not in ("y", "yes"):
+        return {"generate_orders": False, "order_count": 0}
+
+    while True:
+        raw_count = input(
+            f"How many orders should be generated? (>=1, default {default_order_count}): "
+        ).strip()
+        if raw_count == "":
+            return {"generate_orders": True, "order_count": max(1, int(default_order_count))}
+        try:
+            value = int(raw_count)
+        except ValueError:
+            print("Please enter a whole number 1 or greater.")
+            continue
+        if value >= 1:
+            return {"generate_orders": True, "order_count": value}
+        print("Please enter a whole number 1 or greater.")
+
+
 def prompt_account_group_config(total_accounts):
     """
     Prompt user for account group configuration.
@@ -651,7 +766,23 @@ def prompt_account_group_config(total_accounts):
     return {"group_names": group_names, "assign_count": assign_count}
 
 
-def generate_account_data(num_rows=100, custom_attributes=None, contact_count=5, payment_config=None, tax_config=None, accounting_config=None, group_config=None, custom_form_config=None):
+def save_generation_config(path, config):
+    """Save generation configuration (contacts, custom attributes, payment, tax, etc.) to JSON."""
+    try:
+        with open(path, "w", encoding="utf-8") as f:
+            json.dump(config, f, indent=2)
+        print(f"Configuration saved to {path}")
+    except OSError as exc:
+        print(f"WARNING: Could not save configuration to {path}: {exc}")
+
+
+def load_generation_config(path):
+    """Load generation configuration from JSON."""
+    with open(path, "r", encoding="utf-8") as f:
+        return json.load(f)
+
+
+def generate_account_data(num_rows=100, custom_attributes=None, contact_count=5, account_address_config=None, payment_config=None, tax_config=None, accounting_config=None, group_config=None, custom_form_config=None, user_team_config=None, order_config=None):
     """
     Generate random account data CSV file
 
@@ -669,6 +800,15 @@ def generate_account_data(num_rows=100, custom_attributes=None, contact_count=5,
 
     # Ensure contact_count is between 1 and 5
     contact_count = max(1, min(5, int(contact_count)))
+
+    # Address configuration (number of lines populated)
+    if account_address_config is None:
+        account_address_config = {"line_count": 1}
+    try:
+        address_line_count = int(account_address_config.get("line_count", 1))
+    except (TypeError, ValueError):
+        address_line_count = 1
+    address_line_count = max(1, min(5, address_line_count))
 
     # Default payment configuration (no methods) if not provided
     if payment_config is None:
@@ -719,6 +859,24 @@ def generate_account_data(num_rows=100, custom_attributes=None, contact_count=5,
         custom_form_indices = set(random.sample(range(num_rows), form_count))
     else:
         custom_form_indices = set()
+
+    # Account user team configuration
+    if user_team_config is None:
+        user_team_config = {"team_names": []}
+    team_names = user_team_config.get("team_names", [])
+
+    # Order generation configuration
+    if order_config is None:
+        order_config = {"generate_orders": False, "order_count": 0}
+    generate_orders = bool(order_config.get("generate_orders"))
+    if generate_orders:
+        try:
+            order_count = int(order_config.get("order_count", num_rows))
+        except (TypeError, ValueError):
+            order_count = num_rows
+        order_count = max(1, order_count)
+    else:
+        order_count = 0
 
     data = []
 
@@ -846,8 +1004,10 @@ def generate_account_data(num_rows=100, custom_attributes=None, contact_count=5,
             'account_status': 'ACTIVE',
             'account_id': account_id,
             'account_name': account_name,
+            'account_display_name': account_name,
             'account_type': account_type,
             'account_description': generate_description(),
+            'account_origin': '',
             'account_email_address': f"info@{domain}",
             'account_currency': account_currency,
             'account_time_zone': account_time_zone,
@@ -868,6 +1028,9 @@ def generate_account_data(num_rows=100, custom_attributes=None, contact_count=5,
             'account_invoice_term': account_invoice_term,
             'account_billing_period': account_billing_period,
         }
+
+        # Add primary account address fields
+        row.update(generate_account_address_fields(address_line_count))
 
         # Add contacts up to requested count only
         for idx in range(1, contact_count + 1):
@@ -926,6 +1089,10 @@ def generate_account_data(num_rows=100, custom_attributes=None, contact_count=5,
         # Assign account_custom_form if configured for this row
         if form_names and i in custom_form_indices:
             row["account_custom_form"] = random.choice(form_names)
+
+        # Assign account_user_team if configured (each account gets one team)
+        if team_names:
+            row["account_user_team"] = random.choice(team_names)
 
         # Apply custom attributes
         for attr in custom_attributes:
@@ -988,7 +1155,7 @@ def generate_account_data(num_rows=100, custom_attributes=None, contact_count=5,
     # Create DataFrame and normalise empties
     df = pd.DataFrame(data).fillna("")
 
-    # Reorder columns: account info -> account group -> custom attributes -> payment methods -> contacts -> others
+    # Reorder columns: account info -> account group -> custom attributes -> addresses -> payment methods -> contacts -> others
     all_cols = list(df.columns)
 
     account_group_cols = [c for c in all_cols if c == "account_group"]
@@ -998,6 +1165,7 @@ def generate_account_data(num_rows=100, custom_attributes=None, contact_count=5,
         if c.startswith("account_") and c not in account_group_cols
     ]
     custom_attr_cols = [c for c in all_cols if c.startswith("ca_account_attr_")]
+    address_cols = [c for c in all_cols if c.startswith("address_")]
     payment_cols = [c for c in all_cols if c.startswith("payment_method_")]
     contact_cols = [
         c for c in all_cols if c.startswith("contact_") or c.startswith("ca_contact_")
@@ -1007,6 +1175,7 @@ def generate_account_data(num_rows=100, custom_attributes=None, contact_count=5,
         account_info_cols
         + account_group_cols
         + custom_attr_cols
+        + address_cols
         + payment_cols
         + contact_cols
     )
@@ -1016,6 +1185,7 @@ def generate_account_data(num_rows=100, custom_attributes=None, contact_count=5,
         account_info_cols
         + account_group_cols
         + custom_attr_cols
+        + address_cols
         + payment_cols
         + contact_cols
         + other_cols
@@ -1038,6 +1208,14 @@ def generate_account_data(num_rows=100, custom_attributes=None, contact_count=5,
     print(f"  All IDs unique: {len(used_account_ids) == num_rows}")
     print(f"  All names unique: {len(used_account_names) == num_rows}")
 
+    if generate_orders:
+        print("\nOrder CSV setup requested - generating order file...")
+        order_filepath = order_csv_generator.generate_order_csv(
+            order_count,
+            account_rows=data,
+        )
+        print(f"Order file saved to: {order_filepath}")
+
     return filepath
 
 if __name__ == "__main__":
@@ -1046,6 +1224,16 @@ if __name__ == "__main__":
                         help='Number of accounts to generate (default: 200)')
     parser.add_argument('--batch', action='store_true',
                         help='Generate multiple files: 200, 300, 400, and 500 accounts')
+    parser.add_argument(
+        '--save-config',
+        dest='save_config',
+        nargs='?',
+        const=str(DEFAULT_CONFIG_PATH),
+        default=None,
+        help=f'Path to save the interactive generation configuration as JSON (default if omitted: {DEFAULT_CONFIG_PATH})',
+    )
+    parser.add_argument('--load-config', dest='load_config', type=str, default=None,
+                        help='Path to load generation configuration from JSON (skips interactive prompts)')
 
     args = parser.parse_args()
 
@@ -1066,28 +1254,88 @@ if __name__ == "__main__":
         for f in files:
             print(f"  - {f}")
     else:
-        # Single file generation with interactive custom attributes, contact count, payment methods, tax, accounting code, and account group
-        print("Contact setup:")
-        contact_count = prompt_contact_count()
-        print("Custom attribute setup:")
-        custom_attrs = prompt_custom_attributes()
-        print("Payment method setup:")
-        payment_cfg = prompt_payment_methods()
-        print("Tax setup:")
-        tax_cfg = prompt_tax_config()
-        print("Accounting code setup:")
-        accounting_cfg = prompt_accounting_config()
-        print("Account group setup:")
-        group_cfg = prompt_account_group_config(args.count)
-        print("Account custom form setup:")
-        custom_form_cfg = prompt_account_custom_form_config(args.count)
-        generate_account_data(
-            args.count,
-            custom_attributes=custom_attrs,
-            contact_count=contact_count,
-            payment_config=payment_cfg,
-            tax_config=tax_cfg,
-            accounting_config=accounting_cfg,
-            group_config=group_cfg,
-            custom_form_config=custom_form_cfg,
-        )
+        # Single file generation
+        if args.load_config:
+            # Load config from JSON and reuse it (no interactive prompts)
+            try:
+                cfg = load_generation_config(args.load_config)
+            except OSError as exc:
+                print(f"ERROR: Could not load config from {args.load_config}: {exc}")
+                raise SystemExit(1)
+
+            contact_count = int(cfg.get("contact_count", 5))
+            custom_attrs = cfg.get("custom_attributes", [])
+            account_address_cfg = cfg.get("account_address_config", None)
+            payment_cfg = cfg.get("payment_config", None)
+            tax_cfg = cfg.get("tax_config", None)
+            accounting_cfg = cfg.get("accounting_config", None)
+            group_cfg = cfg.get("group_config", None)
+            custom_form_cfg = cfg.get("custom_form_config", None)
+            user_team_cfg = cfg.get("user_team_config", None)
+            order_cfg = cfg.get("order_config", None)
+
+            generate_account_data(
+                args.count,
+                custom_attributes=custom_attrs,
+                contact_count=contact_count,
+                account_address_config=account_address_cfg,
+                payment_config=payment_cfg,
+                tax_config=tax_cfg,
+                accounting_config=accounting_cfg,
+                group_config=group_cfg,
+                custom_form_config=custom_form_cfg,
+                user_team_config=user_team_cfg,
+                order_config=order_cfg,
+            )
+        else:
+            # Interactive prompts, with optional config saving
+            print("Contact setup:")
+            contact_count = prompt_contact_count()
+            print("Custom attribute setup:")
+            custom_attrs = prompt_custom_attributes()
+            print("Account address setup:")
+            account_address_cfg = prompt_account_address_config()
+            print("Payment method setup:")
+            payment_cfg = prompt_payment_methods()
+            print("Tax setup:")
+            tax_cfg = prompt_tax_config()
+            print("Accounting code setup:")
+            accounting_cfg = prompt_accounting_config()
+            print("Account group setup:")
+            group_cfg = prompt_account_group_config(args.count)
+            print("Account custom form setup:")
+            custom_form_cfg = prompt_account_custom_form_config(args.count)
+            print("Account user team setup:")
+            user_team_cfg = prompt_account_user_team_config()
+            print("Order setup:")
+            order_cfg = prompt_order_generation_config(args.count)
+
+            # Optionally save configuration
+            if args.save_config:
+                cfg = {
+                    "contact_count": contact_count,
+                    "custom_attributes": custom_attrs,
+                    "account_address_config": account_address_cfg,
+                    "payment_config": payment_cfg,
+                    "tax_config": tax_cfg,
+                    "accounting_config": accounting_cfg,
+                    "group_config": group_cfg,
+                    "custom_form_config": custom_form_cfg,
+                    "user_team_config": user_team_cfg,
+                    "order_config": order_cfg,
+                }
+                save_generation_config(args.save_config, cfg)
+
+            generate_account_data(
+                args.count,
+                custom_attributes=custom_attrs,
+                contact_count=contact_count,
+                account_address_config=account_address_cfg,
+                payment_config=payment_cfg,
+                tax_config=tax_cfg,
+                accounting_config=accounting_cfg,
+                group_config=group_cfg,
+                custom_form_config=custom_form_cfg,
+                user_team_config=user_team_cfg,
+                order_config=order_cfg,
+            )
