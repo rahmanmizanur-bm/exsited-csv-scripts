@@ -417,44 +417,48 @@ def prompt_order_item_config():
 
 def prompt_order_custom_attributes():
     """
-    Prompt user for order-level custom attributes.
+    Prompt user for order-level custom attributes (default: none).
     """
+    use_attrs = input("Do you want order custom attributes? (y/N, default n): ").strip().lower()
+    if use_attrs not in ("y", "yes"):
+        return []
+
     while True:
-        raw = input("How many order custom attributes do you want? (0 for none, default 0): ").strip()
+        raw = input("How many order custom attributes? (>=1, default 10): ").strip()
         if raw == "":
-            return 0, []
+            count = 10
+            break
         try:
             count = int(raw)
         except ValueError:
-            print("Please enter 0 or a positive number.")
+            print("Please enter a whole number 1 or greater.")
             continue
-        if count < 0:
-            print("Please enter 0 or a positive number.")
-            continue
-        break
-
-    if count == 0:
-        return 0, []
+        if count >= 1:
+            break
+        print("Please enter a whole number 1 or greater.")
 
     if count == 10:
         default_choice = input("Use default 10 order custom attributes? (y/N, default n): ").strip().lower()
         if default_choice in ("y", "yes"):
-            return count, get_default_order_custom_attributes()
+            return get_default_order_custom_attributes()
 
-    attrs = collect_custom_attrs("ca_order_attr_")
-    return len(attrs), attrs
+    return collect_custom_attrs("ca_order_attr_", count)
 
 
-def collect_custom_attrs(prefix):
+def collect_custom_attrs(prefix, count):
     attrs = []
-    idx = 1
-    while True:
-        print(f"\nCustom attribute {idx}")
-        name = input("  Enter attribute name (or 'done' to finish): ").strip()
-        if name.lower() == "done":
-            break
-        if not name:
+    for idx in range(1, count + 1):
+        print(f"\nCustom attribute {idx}/{count}")
+        while True:
+            name = input("  Enter attribute name (e.g., ATTR_NAME, or 'skip' to skip): ").strip()
+            if name.lower() == "skip":
+                print("  Skipping this attribute.")
+                name = ""
+                break
+            if name:
+                break
             print("  Name cannot be empty.")
+        if not name:
             continue
         normalized = name.replace(" ", "_").upper()
         column_name = f"{prefix}{normalized}"
@@ -554,7 +558,6 @@ def collect_custom_attrs(prefix):
                 "quantity_max": quantity_max,
             }
         )
-        idx += 1
     return attrs
 
 
@@ -562,142 +565,30 @@ def prompt_line_item_custom_attributes():
     """
     Prompt user for custom attributes on line items.
     """
+    use_attrs = input("Do you want line item custom attributes? (y/N, default n): ").strip().lower()
+    if use_attrs not in ("y", "yes"):
+        return []
+
     while True:
-        raw = input("How many line item custom attributes do you want? (0 for none): ").strip()
+        raw = input("How many line item custom attributes? (>=1, default 10): ").strip()
         if raw == "":
-            return []
+            count = 10
+            break
         try:
             count = int(raw)
         except ValueError:
-            print("Please enter 0 or a positive number.")
+            print("Please enter a whole number 1 or greater.")
             continue
-        if count < 0:
-            print("Please enter 0 or a positive number.")
-            continue
-        break
-
-    if count == 0:
-        return []
+        if count >= 1:
+            break
+        print("Please enter a whole number 1 or greater.")
 
     if count == 10:
         default_choice = input("Use default 10 line item custom attributes? (y/N, default n): ").strip().lower()
         if default_choice in ("y", "yes"):
             return get_default_line_item_custom_attributes()
 
-    attrs = []
-    for idx in range(1, count + 1):
-        print(f"\nLine item custom attribute {idx}/{count}")
-        while True:
-            name = input("  Enter attribute name (or 'skip' to skip): ").strip()
-            if name.lower() == "skip":
-                print("  Skipping this attribute.")
-                name = ""
-                break
-            if name:
-                break
-            print("  Name cannot be empty.")
-        if not name:
-            continue
-        normalized = name.replace(" ", "_").upper()
-        column_name = f"ca_order_line_item_attr_{normalized}"
-
-        type_menu = (
-            "  Select type:\n"
-            "    1) Boolean\n"
-            "    2) Number\n"
-            "    3) String\n"
-            "    4) Text\n"
-            "    5) Date\n"
-            "    6) Money\n"
-            "    7) Quantity\n"
-            "    8) Dropdown\n"
-            "    9) Dropdown (MultiSelect)\n"
-            "   10) Checkboxes\n"
-            "   11) Radio\n"
-        )
-        print(type_menu, end="")
-        type_map = {
-            "1": "bool",
-            "2": "number",
-            "3": "string",
-            "4": "text",
-            "5": "date",
-            "6": "money",
-            "7": "quantity",
-            "bool": "bool",
-            "boolean": "bool",
-            "number": "number",
-            "string": "string",
-            "text": "text",
-            "date": "date",
-            "money": "money",
-            "quantity": "quantity",
-            "8": "dropdown",
-            "dropdown": "dropdown",
-            "9": "dropdown_multi",
-            "multiselect": "dropdown_multi",
-            "dropdown_multiselect": "dropdown_multi",
-            "10": "checkboxes",
-            "checkboxes": "checkboxes",
-            "11": "radio",
-            "radio": "radio",
-        }
-        valid_types = set(type_map.values())
-
-        quantity_min = None
-        quantity_max = None
-
-        while True:
-            raw_type = input("  Enter type (1-11 or name): ").strip().lower()
-            attr_type = type_map.get(raw_type)
-            if attr_type in valid_types:
-                break
-            print("  Invalid type. Please enter 1-11 or a valid type name.")
-
-        if attr_type == "quantity":
-            quantity_min = 1
-            quantity_max = 50
-            while True:
-                range_raw = input("  Enter quantity range as min-max (default 1-50): ").strip()
-                if range_raw == "":
-                    break
-                parts = [p.strip() for p in range_raw.replace(" ", "").split("-") if p.strip()]
-                if len(parts) != 2:
-                    print("  Please enter range in format min-max, e.g., 5-90.")
-                    continue
-                try:
-                    min_val = int(parts[0])
-                    max_val = int(parts[1])
-                except ValueError:
-                    print("  Please enter whole numbers for min and max.")
-                    continue
-                if min_val > max_val:
-                    print("  Min cannot be greater than max.")
-                    continue
-                quantity_min = min_val
-                quantity_max = max_val
-                break
-
-        options = []
-        if attr_type in ("dropdown", "dropdown_multi", "checkboxes", "radio"):
-            raw_opts = input("  Enter options (comma-separated, default A,B,C,D): ").strip()
-            if not raw_opts:
-                raw_opts = "A,B,C,D"
-            options = [o.strip() for o in raw_opts.split(",") if o.strip()]
-
-        attrs.append(
-            {
-                "column_name": column_name,
-                "type": attr_type,
-                "constant": False,
-                "value": None,
-                "options": options,
-                "quantity_min": quantity_min,
-                "quantity_max": quantity_max,
-            }
-        )
-
-    return attrs
+    return collect_custom_attrs("ca_order_line_item_attr_", count)
 
 
 if __name__ == "__main__":
@@ -731,17 +622,16 @@ if __name__ == "__main__":
         account_ids = cfg.get("account_ids", [])
         if not account_ids:
             account_ids = prompt_order_account_ids()
-        order_attrs = cfg.get("order_custom_attributes") or []
-        if not order_attrs:
-            order_attrs = get_default_order_custom_attributes()
+        order_attrs = cfg.get("order_custom_attributes")
+        if order_attrs is None:
+            order_attrs = []
         item_config = cfg.get("item_config") or default_item_config()
         line_item_custom_attrs = cfg.get("line_item_custom_attributes") or []
     else:
         print("Standalone order CSV generation:")
         order_count = max(1, args.count)
         account_ids = prompt_order_account_ids()
-        use_defaults = input("Use default order custom attributes? (y/N, default n): ").strip().lower()
-        order_attrs = get_default_order_custom_attributes() if use_defaults in ("y", "yes") else []
+        order_attrs = prompt_order_custom_attributes()
         item_config = prompt_order_item_config()
         line_item_custom_attrs = prompt_line_item_custom_attributes()
 
