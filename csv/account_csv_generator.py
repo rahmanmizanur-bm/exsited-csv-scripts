@@ -1266,6 +1266,9 @@ if __name__ == "__main__":
             contact_count = int(cfg.get("contact_count", 5))
             custom_attrs = cfg.get("custom_attributes", [])
             account_address_cfg = cfg.get("account_address_config", None)
+            # Backward compatibility: older configs may not have address settings
+            if account_address_cfg is None:
+                account_address_cfg = prompt_account_address_config()
             payment_cfg = cfg.get("payment_config", None)
             tax_cfg = cfg.get("tax_config", None)
             accounting_cfg = cfg.get("accounting_config", None)
@@ -1289,12 +1292,12 @@ if __name__ == "__main__":
             )
         else:
             # Interactive prompts, with optional config saving
-            print("Contact setup:")
-            contact_count = prompt_contact_count()
             print("Custom attribute setup:")
             custom_attrs = prompt_custom_attributes()
             print("Account address setup:")
             account_address_cfg = prompt_account_address_config()
+            print("Contact setup:")
+            contact_count = prompt_contact_count()
             print("Payment method setup:")
             payment_cfg = prompt_payment_methods()
             print("Tax setup:")
