@@ -256,8 +256,12 @@ def generate_order_rows(
                 row["system_item_code"] = ""
 
         if include_line_items:
-            row["line_item_uuid"] = generate_line_item_uuid()
-            row["line_item_id"] = generate_line_item_id()
+            if include_system:
+                row["line_item_uuid"] = generate_line_item_uuid()
+                row["line_item_id"] = generate_line_item_id()
+            else:
+                row["line_item_uuid"] = ""
+                row["line_item_id"] = ""
             row["line_item_name"] = generate_line_item_name()
             row["line_item_order_quantity"] = generate_line_item_quantity()
             row["line_item_invoice_note"] = generate_line_item_invoice_note()
