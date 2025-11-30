@@ -36,3 +36,6 @@ Thumbs.db
 # worklog
 worklog/latest_worklog.txt
 worklog/worklog_input.txt
+
+# ai_agents
+.claude/

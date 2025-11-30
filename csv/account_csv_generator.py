@@ -1273,13 +1273,27 @@ def generate_account_data(num_rows=100, custom_attributes=None, contact_count=5,
     )
     df = df[ordered_cols]
 
+    # Prefix date columns with tab character to prevent Excel auto-conversion
+    date_columns = []
+
+    # Add custom attribute date columns
+    if custom_attributes:
+        for attr in custom_attributes:
+            if attr.get('type') == 'date':
+                date_columns.append(attr['column_name'])
+
+    # Prefix dates with tab character for Excel
+    for col in date_columns:
+        if col in df.columns:
+            df[col] = df[col].apply(lambda x: f"\t{x}" if x and x != "" else x)
+
     # Generate timestamped filename
     timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
     filename = f"ACCOUNT_DUMMY_DATA_{num_rows}_{timestamp}.csv"
     filepath = f"C:\\Users\\Rahman\\Downloads\\{filename}"
 
     # Save to CSV
-    df.to_csv(filepath, index=False)
+    df.to_csv(filepath, index=False, quoting=1)  # QUOTE_MINIMAL
 
     print(f"\nSuccessfully generated {num_rows} accounts!")
     print(f"File saved to: {filepath}")
