@@ -1,6 +1,6 @@
 import pandas as pd
 import random
-from datetime import datetime
+from datetime import datetime, timedelta
 from faker import Faker
 import argparse
 import json
@@ -10,11 +10,19 @@ import order_csv_generator
 
 fake = Faker('en_AU')
 DEFAULT_CONFIG_PATH = Path(__file__).resolve().parent / "account_generator_config.json"
+ACCOUNT_TYPE_SUFFIX = {
+    'CUSTOMER': 'CUS',
+    'SUPPLIER': 'SUP',
+    'CUSTOMER_AND_SUPPLIER': 'CUS_SUP',
+}
 
-def generate_account_id():
-    """Generate unique account ID in format CSV-ACC-XXXXX-CUS or CSV-ACC-XXXXX-SUP"""
+def generate_account_id(account_type=None):
+    """Generate unique account ID tied to account_type (e.g., CSV-ACC-XXXXX-CUS)."""
     number = random.randint(10000, 99999)
-    suffix = random.choice(['CUS', 'SUP'])
+    if account_type:
+        suffix = ACCOUNT_TYPE_SUFFIX.get(account_type.upper(), 'CUS')
+    else:
+        suffix = random.choice(list(ACCOUNT_TYPE_SUFFIX.values()))
     return f"CSV-ACC-{number}-{suffix}"
 
 def generate_company_name():
@@ -949,9 +957,12 @@ def generate_account_data(num_rows=100, custom_attributes=None, contact_count=5,
     data = []
 
     for i in range(num_rows):
+        # Determine account type before assigning ID suffix
+        account_type = random.choice(['CUSTOMER', 'SUPPLIER', 'CUSTOMER_AND_SUPPLIER'])
+
         # Generate unique account_id
         while True:
-            account_id = generate_account_id()
+            account_id = generate_account_id(account_type)
             if account_id not in used_account_ids:
                 used_account_ids.add(account_id)
                 break
@@ -968,7 +979,6 @@ def generate_account_data(num_rows=100, custom_attributes=None, contact_count=5,
         website_domain = name_to_domain(account_name, extensions=['.com'])
 
         # Account-level fixed fields
-        account_type = random.choice(['CUSTOMER', 'SUPPLIER', 'CUSTOMER_AND_SUPPLIER'])
         account_currency = random.choice(['AUD', 'USD'])
         account_time_zone = random.choice(
             [
@@ -1186,18 +1196,11 @@ def generate_account_data(num_rows=100, custom_attributes=None, contact_count=5,
                 elif attr_type == 'money':
                     value = round(random.uniform(1, 10000), 2)
                 elif attr_type == 'date':
-                    # Random date in current year.
-                    # If <=30 rows: current month only; else previous months too.
+                    # Random date +/- 365 days from today.
                     today = datetime.now()
-                    year = today.year
-                    if num_rows <= 30 or today.month == 1:
-                        month = today.month
-                    else:
-                        month = random.randint(1, today.month)
-                    import calendar
-                    days_in_month = calendar.monthrange(year, month)[1]
-                    day = random.randint(1, days_in_month)
-                    value = datetime(year, month, day).strftime("%Y-%m-%d")
+                    offset_days = random.randint(-365, 365)
+                    random_date = today + timedelta(days=offset_days)
+                    value = random_date.strftime("%Y-%m-%d")
                 elif attr_type == 'text':
                     value = fake.sentence(nb_words=10)
                 elif attr_type == 'dropdown':
@@ -1300,126 +1303,123 @@ def generate_account_data(num_rows=100, custom_attributes=None, contact_count=5,
     return filepath
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description='Generate random account data CSV files')
-    parser.add_argument('count', type=int, nargs='?', default=200,
-                        help='Number of accounts to generate (default: 200)')
-    parser.add_argument('--batch', action='store_true',
-                        help='Generate multiple files: 200, 300, 400, and 500 accounts')
-    parser.add_argument(
-        '--save-config',
-        dest='save_config',
-        nargs='?',
-        const=str(DEFAULT_CONFIG_PATH),
-        default=None,
-        help=f'Path to save the interactive generation configuration as JSON (default if omitted: {DEFAULT_CONFIG_PATH})',
-    )
-    parser.add_argument('--load-config', dest='load_config', type=str, default=None,
-                        help='Path to load generation configuration from JSON (skips interactive prompts)')
+    try:
+        parser = argparse.ArgumentParser(description='Generate random account data CSV files')
+        parser.add_argument('count', type=int, nargs='?', default=200,
+                            help='Number of accounts to generate (default: 200)')
+        parser.add_argument('--batch', action='store_true',
+                            help='Generate multiple files: 200, 300, 400, and 500 accounts')
+        parser.add_argument(
+            '--save-config',
+            dest='save_config',
+            nargs='?',
+            const=str(DEFAULT_CONFIG_PATH),
+            default=None,
+            help=f'Path to save the interactive generation configuration as JSON (default if omitted: {DEFAULT_CONFIG_PATH})',
+        )
+        parser.add_argument('--load-config', dest='load_config', type=str, default=None,
+                            help='Path to load generation configuration from JSON (skips interactive prompts)')
 
-    args = parser.parse_args()
+        args = parser.parse_args()
 
-    if args.batch:
-        print("=== BATCH MODE: Generating multiple files ===\n")
-        counts = [200, 300, 400, 500]
-        files = []
+        if args.batch:
+            print("=== BATCH MODE: Generating multiple files ===\n")
+            counts = [200, 300, 400, 500]
+            files = []
 
-        # In batch mode we skip interactive prompts and use defaults
-        for count in counts:
-            print(f"\n{'='*60}")
-            filepath = generate_account_data(count, custom_attributes=[], contact_count=5)
-            files.append(filepath)
-            print(f"{'='*60}\n")
+            for count in counts:
+                print(f"\n{'='*60}")
+                filepath = generate_account_data(count, custom_attributes=[], contact_count=5)
+                files.append(filepath)
+                print(f"{'='*60}\n")
 
-        print("\n=== BATCH GENERATION COMPLETE ===")
-        print(f"Generated {len(files)} files:")
-        for f in files:
-            print(f"  - {f}")
-    else:
-        # Single file generation
-        if args.load_config:
-            # Load config from JSON and reuse it (no interactive prompts)
-            try:
-                cfg = load_generation_config(args.load_config)
-            except OSError as exc:
-                print(f"ERROR: Could not load config from {args.load_config}: {exc}")
-                raise SystemExit(1)
-
-            contact_count = int(cfg.get("contact_count", 5))
-            custom_attrs = cfg.get("custom_attributes", [])
-            account_address_cfg = cfg.get("account_address_config", None)
-            # Backward compatibility: older configs may not have address settings
-            if account_address_cfg is None:
-                account_address_cfg = prompt_account_address_config()
-            payment_cfg = cfg.get("payment_config", None)
-            tax_cfg = cfg.get("tax_config", None)
-            accounting_cfg = cfg.get("accounting_config", None)
-            group_cfg = cfg.get("group_config", None)
-            custom_form_cfg = cfg.get("custom_form_config", None)
-            user_team_cfg = cfg.get("user_team_config", None)
-            order_cfg = cfg.get("order_config", None)
-
-            generate_account_data(
-                args.count,
-                custom_attributes=custom_attrs,
-                contact_count=contact_count,
-                account_address_config=account_address_cfg,
-                payment_config=payment_cfg,
-                tax_config=tax_cfg,
-                accounting_config=accounting_cfg,
-                group_config=group_cfg,
-                custom_form_config=custom_form_cfg,
-                user_team_config=user_team_cfg,
-                order_config=order_cfg,
-            )
+            print("\n=== BATCH GENERATION COMPLETE ===")
+            print(f"Generated {len(files)} files:")
+            for f in files:
+                print(f"  - {f}")
         else:
-            # Interactive prompts, with optional config saving
-            print("Account address setup:")
-            account_address_cfg = prompt_account_address_config()
-            print("Contact setup:")
-            contact_count = prompt_contact_count()
-            print("Custom attribute setup:")
-            custom_attrs = prompt_custom_attributes()
-            print("Payment method setup:")
-            payment_cfg = prompt_payment_methods()
-            print("Tax setup:")
-            tax_cfg = prompt_tax_config()
-            print("Accounting code setup:")
-            accounting_cfg = prompt_accounting_config()
-            print("Account group setup:")
-            group_cfg = prompt_account_group_config(args.count)
-            print("Account custom form setup:")
-            custom_form_cfg = prompt_account_custom_form_config(args.count)
-            print("Account user team setup:")
-            user_team_cfg = prompt_account_user_team_config()
-            print("Order setup:")
-            order_cfg = prompt_order_generation_config(args.count)
+            if args.load_config:
+                try:
+                    cfg = load_generation_config(args.load_config)
+                except OSError as exc:
+                    print(f"ERROR: Could not load config from {args.load_config}: {exc}")
+                    raise SystemExit(1)
 
-            # Optionally save configuration
-            if args.save_config:
-                cfg = {
-                    "contact_count": contact_count,
-                    "custom_attributes": custom_attrs,
-                    "account_address_config": account_address_cfg,
-                    "payment_config": payment_cfg,
-                    "tax_config": tax_cfg,
-                    "accounting_config": accounting_cfg,
-                    "group_config": group_cfg,
-                    "custom_form_config": custom_form_cfg,
-                    "user_team_config": user_team_cfg,
-                    "order_config": order_cfg,
-                }
-                save_generation_config(args.save_config, cfg)
+                contact_count = int(cfg.get("contact_count", 5))
+                custom_attrs = cfg.get("custom_attributes", [])
+                account_address_cfg = cfg.get("account_address_config", None)
+                if account_address_cfg is None:
+                    account_address_cfg = prompt_account_address_config()
+                payment_cfg = cfg.get("payment_config", None)
+                tax_cfg = cfg.get("tax_config", None)
+                accounting_cfg = cfg.get("accounting_config", None)
+                group_cfg = cfg.get("group_config", None)
+                custom_form_cfg = cfg.get("custom_form_config", None)
+                user_team_cfg = cfg.get("user_team_config", None)
+                order_cfg = cfg.get("order_config", None)
 
-            generate_account_data(
-                args.count,
-                custom_attributes=custom_attrs,
-                contact_count=contact_count,
-                account_address_config=account_address_cfg,
-                payment_config=payment_cfg,
-                tax_config=tax_cfg,
-                accounting_config=accounting_cfg,
-                group_config=group_cfg,
-                custom_form_config=custom_form_cfg,
-                user_team_config=user_team_cfg,
-                order_config=order_cfg,
-            )
+                generate_account_data(
+                    args.count,
+                    custom_attributes=custom_attrs,
+                    contact_count=contact_count,
+                    account_address_config=account_address_cfg,
+                    payment_config=payment_cfg,
+                    tax_config=tax_cfg,
+                    accounting_config=accounting_cfg,
+                    group_config=group_cfg,
+                    custom_form_config=custom_form_cfg,
+                    user_team_config=user_team_cfg,
+                    order_config=order_cfg,
+                )
+            else:
+                print("Account address setup:")
+                account_address_cfg = prompt_account_address_config()
+                print("Contact setup:")
+                contact_count = prompt_contact_count()
+                print("Custom attribute setup:")
+                custom_attrs = prompt_custom_attributes()
+                print("Payment method setup:")
+                payment_cfg = prompt_payment_methods()
+                print("Tax setup:")
+                tax_cfg = prompt_tax_config()
+                print("Accounting code setup:")
+                accounting_cfg = prompt_accounting_config()
+                print("Account group setup:")
+                group_cfg = prompt_account_group_config(args.count)
+                print("Account custom form setup:")
+                custom_form_cfg = prompt_account_custom_form_config(args.count)
+                print("Account user team setup:")
+                user_team_cfg = prompt_account_user_team_config()
+                print("Order setup:")
+                order_cfg = prompt_order_generation_config(args.count)
+
+                if args.save_config:
+                    cfg = {
+                        "contact_count": contact_count,
+                        "custom_attributes": custom_attrs,
+                        "account_address_config": account_address_cfg,
+                        "payment_config": payment_cfg,
+                        "tax_config": tax_cfg,
+                        "accounting_config": accounting_cfg,
+                        "group_config": group_cfg,
+                        "custom_form_config": custom_form_cfg,
+                        "user_team_config": user_team_cfg,
+                        "order_config": order_cfg,
+                    }
+                    save_generation_config(args.save_config, cfg)
+
+                generate_account_data(
+                    args.count,
+                    custom_attributes=custom_attrs,
+                    contact_count=contact_count,
+                    account_address_config=account_address_cfg,
+                    payment_config=payment_cfg,
+                    tax_config=tax_cfg,
+                    accounting_config=accounting_cfg,
+                    group_config=group_cfg,
+                    custom_form_config=custom_form_cfg,
+                    user_team_config=user_team_cfg,
+                    order_config=order_cfg,
+                )
+    except KeyboardInterrupt:
+        print("\nAccount generation cancelled by user.")

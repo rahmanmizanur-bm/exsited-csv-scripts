@@ -2,7 +2,7 @@ import argparse
 import argparse
 import json
 import random
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 
 import pandas as pd
@@ -10,6 +10,7 @@ from faker import Faker
 
 fake = Faker("en_AU")
 DEFAULT_CONFIG_PATH = Path(__file__).resolve().parent / "order_generator_config.json"
+DEFAULT_ORDER_COUNT = 200
 
 
 def generate_order_id():
@@ -106,7 +107,18 @@ def generate_line_item_quantity():
 
 
 DEFAULT_ORDER_ATTR_OPTIONS = ["A", "B", "C", "D"]
-DEFAULT_ORDER_RADIO_OPTIONS = [str(i) for i in range(1, 51)]
+DEFAULT_ORDER_RADIO_OPTIONS = DEFAULT_ORDER_ATTR_OPTIONS[:]
+LINE_ITEM_ACCOUNTING_CODES = [
+    "Account Receivable",
+    "Cash and Cash Equivalent",
+    "Inventory",
+    "Sales Revenue",
+    "Event Charge",
+    "Deduction",
+    "Alteration",
+    "Cancellation",
+    "Chargeback",
+]
 
 
 def get_default_order_custom_attributes(prefix="ca_order_attr_"):
@@ -149,7 +161,10 @@ def _random_value_for_attr(attr):
         k = random.randint(1, len(options)) if options else 0
         return ",".join(random.sample(options, k=k)) if k else ""
     if attr_type == "date":
-        return datetime.now().strftime("%Y-%m-%d")
+        today = datetime.now()
+        offset_days = random.randint(-365, 365)
+        random_date = today + timedelta(days=offset_days)
+        return random_date.strftime("%Y-%m-%d")
     if attr_type == "dropdown":
         return random.choice(options) if options else ""
     if attr_type == "dropdown_multi":
@@ -180,19 +195,22 @@ def default_item_config():
     return {
         "include_system_items": True,
         "include_line_items": True,
-        "system_identifier_type": "uuid",
         "system_identifiers": [],
+        "min_items_per_order": 1,
+        "max_items_per_order": 5,
     }
 
 
-def _fallback_system_identifiers(identifier_type, count=5):
-    identifiers = []
+def _fallback_system_identifiers(count=5):
+    return [f"ITEM-{random.randint(1000, 9999)}" for _ in range(count)]
+
+
+def _generate_placeholder_account_ids(count=10):
+    """Create placeholder account IDs when none provided."""
+    ids = []
     for _ in range(count):
-        if identifier_type == "code":
-            identifiers.append(f"SYS-CODE-{random.randint(1000, 9999)}")
-        else:
-            identifiers.append(f"00000000-0000-0000-0000-{random.randint(100000000000, 999999999999)}")
-    return identifiers
+        ids.append(f"CSV-ACC-{random.randint(10000, 99999)}-CUS")
+    return ids
 
 
 def generate_order_rows(
@@ -223,12 +241,9 @@ def generate_order_rows(
     if not include_system and not include_line_items:
         include_line_items = True
 
-    system_identifier_type = item_config.get("system_identifier_type", "uuid").lower()
-    if system_identifier_type not in ("uuid", "code"):
-        system_identifier_type = "uuid"
     system_identifiers = item_config.get("system_identifiers") or []
     if include_system and not system_identifiers:
-        system_identifiers = _fallback_system_identifiers(system_identifier_type)
+        system_identifiers = _fallback_system_identifiers()
     discount_probability = float(item_config.get("line_item_discount_probability", 0.12))
     discount_probability = max(0.0, min(1.0, discount_probability))
 
@@ -242,60 +257,132 @@ def generate_order_rows(
             "order_display_name": order_name,
             "order_description": generate_order_description(),
             "order_origin": f"CSV IMPORT - {idx + 1}",
+            "order_billing_start_date": "",
+            "order_order_start_date": "",
+            "order_consolidate_invoice": "",
+            "order_consolidate_key": "",
+            "order_communication_preference": "",
+            "order_payment_mode": "",
+            "order_payment_term_alignment": "",
+            "order_payment_term": "",
+            "order_allow_installment": "",
+            "order_installment_type": "",
+            "order_installment_count": "",
+            "order_installment_amount": "",
+            "order_installment_period": "",
             "order_invoice_note": generate_order_invoice_note(order_name),
             "order_currency": currency or default_currency,
             "order_account_id": account_id,
-            "system_item_id": "",
-            "system_item_uuid": "",
-            "system_item_code": "",
             "line_item_uuid": "",
             "line_item_id": "",
+            "line_item_accounting_code": "",
         }
 
-        if include_system:
-            identifier = random.choice(system_identifiers)
-            row["system_item_id"] = identifier
-            if system_identifier_type == "code":
-                row["system_item_code"] = identifier
-                row["system_item_uuid"] = ""
+        billing_choices = [
+            "RATING_START_DATE",
+            "SUBSCRIPTION_START_DATE",
+            "SUBSCRIPTION_ACTIVATION_DATE",
+            "SUBSCRIPTION_ACCEPTANCE_DATE",
+        ]
+        if random.random() < 0.8:
+            billing_choice = random.choice(billing_choices)
+            row["order_billing_start_date"] = billing_choice
+            if billing_choice == "SUBSCRIPTION_START_DATE":
+                future_days = random.randint(0, 90)
+                start_date = datetime.now() + timedelta(days=future_days)
+                date_value = start_date.strftime("%Y-%m-%d")
+                row["order_order_start_date"] = date_value
+
+        comm_channels = ['EMAIL', 'POSTAL_EMAIL', 'TEXT_MESSAGE', 'VOICE_MAIL']
+        comm_count = random.randint(1, len(comm_channels))
+        row["order_communication_preference"] = ",".join(random.sample(comm_channels, k=comm_count))
+
+        row["order_payment_mode"] = random.choice(["MANUAL", "AUTOMATIC"])
+        row["order_payment_term_alignment"] = random.choice(["BILLING_DATE", "INVOICE_DATE"])
+        row["order_payment_term"] = row["order_payment_term_alignment"]
+
+        allow_installment = random.random() < 0.3
+
+        if not allow_installment and random.random() < 0.4:
+            row["order_consolidate_invoice"] = "TRUE"
+            if random.random() < 0.8:
+                row["order_consolidate_key"] = f"ORDER-CONS-{random.randint(1000, 9999)}"
+
+        if allow_installment:
+            row["order_allow_installment"] = "TRUE"
+            row["order_installment_type"] = random.choice(["FIXED_TERM", "FIXED_EMI"])
+            installment_period_choices = ['1 Day', '1 Week']
+            installment_period_choices += [f"{m} Month" for m in range(1, 13)]
+            installment_period_choices += [f"{y} Year" for y in range(1, 11)]
+            row["order_installment_period"] = random.choice(installment_period_choices)
+            if row["order_installment_type"] == "FIXED_TERM":
+                row["order_installment_count"] = str(random.randint(2, 100))
             else:
-                row["system_item_uuid"] = identifier
-                row["system_item_code"] = ""
+                row["order_installment_amount"] = str(round(random.uniform(10, 500), 2))
+        else:
+            row["order_allow_installment"] = ""
 
-        if include_line_items:
-            if include_system:
-                row["line_item_uuid"] = generate_line_item_uuid()
-                row["line_item_id"] = generate_line_item_id()
-            row["line_item_name"] = generate_line_item_name()
-            row["line_item_order_quantity"] = generate_line_item_quantity()
-            row["line_item_invoice_note"] = generate_line_item_invoice_note()
-            row["line_item_description"] = generate_line_item_description()
-            row["line_item_price_snapshot_price"] = generate_line_item_price()
+        min_items = max(1, int(item_config.get("min_items_per_order", 1)))
+        max_items = max(min_items, int(item_config.get("max_items_per_order", min_items)))
+        total_items = random.randint(min_items, max_items)
 
-            if random.random() < discount_probability:
-                discount_type = random.choice(["FIXED", "PERCENTAGE"])
-                if discount_type == "FIXED":
-                    discount_value = round(random.uniform(5, 250), 2)
+        for item_idx in range(total_items):
+            item_row = row.copy()
+            item_row["line_item_uuid"] = ""
+            item_row["line_item_id"] = ""
+            item_row["line_item_accounting_code"] = ""
+            is_system_item = False
+            if include_system and include_line_items:
+                is_system_item = random.random() < 0.5
+            elif include_system:
+                is_system_item = True
+            else:
+                is_system_item = False
+
+            if is_system_item:
+                identifier = random.choice(system_identifiers)
+                item_row["line_item_uuid"] = identifier
+                item_row["line_item_id"] = identifier
+            elif include_line_items:
+                item_row["line_item_name"] = generate_line_item_name()
+                item_row["line_item_order_quantity"] = generate_line_item_quantity()
+                item_row["line_item_invoice_note"] = generate_line_item_invoice_note()
+                item_row["line_item_description"] = generate_line_item_description()
+                item_row["line_item_price_snapshot_price"] = generate_line_item_price()
+                item_row["line_item_accounting_code"] = random.choice(LINE_ITEM_ACCOUNTING_CODES)
+
+                if random.random() < discount_probability:
+                    discount_type = random.choice(["FIXED", "PERCENTAGE"])
+                    if discount_type == "FIXED":
+                        discount_value = round(random.uniform(5, 250), 2)
+                    else:
+                        discount_value = random.randint(1, 100)
+                    item_row["line_item_discount_type"] = discount_type
+                    item_row["line_item_discount"] = discount_value
                 else:
-                    discount_value = random.randint(1, 100)
-                row["line_item_discount_type"] = discount_type
-                row["line_item_discount"] = discount_value
-            else:
-                row["line_item_discount_type"] = ""
-                row["line_item_discount"] = ""
+                    item_row["line_item_discount_type"] = ""
+                    item_row["line_item_discount"] = ""
 
-            # Keep tax_exempt mostly blank, only mark TRUE occasionally so system defaults remain FALSE
-            if random.random() < 0.1:
-                row["line_item_tax_exempt"] = "TRUE"
-            else:
-                row["line_item_tax_exempt"] = ""
+                if random.random() < 0.1:
+                    item_row["line_item_tax_exempt"] = "TRUE"
+                else:
+                    item_row["line_item_tax_exempt"] = ""
 
-            for attr in line_item_custom_attributes:
-                row[attr["column_name"]] = _random_value_for_attr(attr)
+                for attr in line_item_custom_attributes:
+                    item_row[attr["column_name"]] = _random_value_for_attr(attr)
 
-        for attr in custom_attributes:
-            row[attr["column_name"]] = _random_value_for_attr(attr)
-        rows.append(row)
+            for attr in custom_attributes:
+                item_row[attr["column_name"]] = _random_value_for_attr(attr)
+
+            if item_idx > 0:
+                for key in list(item_row.keys()):
+                    if key in ("order_id", "order_account_id"):
+                        continue
+                    if key.startswith("line_item_"):
+                        continue
+                    item_row[key] = ""
+
+            rows.append(item_row)
     return rows
 
 
@@ -325,8 +412,14 @@ def generate_order_csv(
     filepath = f"C:\\Users\\Rahman\\Downloads\\{filename}"
     df.to_csv(filepath, index=False)
 
-    print(f"Successfully generated {order_count} orders.")
-    print(f"Order file saved to: {filepath}")
+    print(f"\nSuccessfully generated {order_count} orders!")
+    print(f"File saved to: {filepath}")
+    if rows:
+        print("\nSample data:")
+        print(f"  First Order ID: {rows[0]['order_id']}")
+        print(f"  First Account ID: {rows[0]['order_account_id']}")
+    unique_ids = len({row['order_id'] for row in rows}) == len(rows)
+    print(f"  All order IDs unique: {unique_ids}")
     return filepath
 
 
@@ -338,22 +431,6 @@ def prompt_order_account_ids():
         if account_ids:
             return account_ids
         print("Please enter at least one account ID.")
-
-
-def prompt_order_count(default_count):
-    """Prompt for number of orders to generate."""
-    while True:
-        raw = input(f"How many orders should be generated? (>=1, default {default_count}): ").strip()
-        if raw == "":
-            return max(1, default_count)
-        try:
-            value = int(raw)
-        except ValueError:
-            print("Please enter a whole number 1 or greater.")
-            continue
-        if value >= 1:
-            return value
-        print("Please enter a whole number 1 or greater.")
 
 
 def save_generation_config(path, config):
@@ -401,27 +478,18 @@ def prompt_order_item_config():
     config = {
         "include_system_items": include_system,
         "include_line_items": include_line,
-        "system_identifier_type": "uuid",
+        "system_identifier_type": "code",
         "system_identifiers": [],
     }
 
     if include_system:
         while True:
-            raw_type = input("Are your system item identifiers UUIDs or codes? (uuid/code, default uuid): ").strip().lower()
-            if raw_type in ("", "uuid", "code"):
-                identifier_type = raw_type if raw_type in ("uuid", "code") else "uuid"
-                break
-            print("Please enter 'uuid' or 'code'.")
-
-        while True:
-            raw_ids = input("Enter system item identifiers (comma-separated, e.g., ID1,ID2): ").strip()
+            raw_ids = input("Enter system item codes (comma-separated, e.g., ITEM1,ITEM2): ").strip()
             identifiers = [value.strip() for value in raw_ids.split(",") if value.strip()]
             if identifiers:
                 config["system_identifiers"] = identifiers
                 break
-            print("Please enter at least one identifier.")
-
-        config["system_identifier_type"] = identifier_type
+            print("Please enter at least one system item code.")
 
     return config
 
@@ -603,63 +671,95 @@ def prompt_line_item_custom_attributes():
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Generate order CSV data.")
-    parser.add_argument("count", type=int, nargs="?", default=200, help="Number of orders to generate (default: 200)")
-    parser.add_argument(
-        "--save-config",
-        dest="save_config",
-        nargs="?",
-        const=str(DEFAULT_CONFIG_PATH),
-        default=None,
-        help=f"Path to save interactive configuration (default if omitted: {DEFAULT_CONFIG_PATH})",
-    )
-    parser.add_argument(
-        "--load-config",
-        dest="load_config",
-        type=str,
-        default=None,
-        help="Path to load configuration (skips interactive prompts)",
-    )
-    args = parser.parse_args()
+    try:
+        parser = argparse.ArgumentParser(description="Generate order CSV data.")
+        parser.add_argument(
+            "count",
+            type=int,
+            nargs="?",
+            default=DEFAULT_ORDER_COUNT,
+            help=f"Number of orders to generate (default: {DEFAULT_ORDER_COUNT})",
+        )
+        parser.add_argument(
+            "--batch",
+            action="store_true",
+            help="Generate multiple files: 200, 300, 400, and 500 orders",
+        )
+        parser.add_argument(
+            "--save-config",
+            dest="save_config",
+            nargs="?",
+            const=str(DEFAULT_CONFIG_PATH),
+            default=None,
+            help=f"Path to save interactive configuration (default if omitted: {DEFAULT_CONFIG_PATH})",
+        )
+        parser.add_argument(
+            "--load-config",
+            dest="load_config",
+            type=str,
+            default=None,
+            help="Path to load configuration (skips interactive prompts)",
+        )
+        args = parser.parse_args()
 
-    if args.load_config:
-        try:
-            cfg = load_generation_config(args.load_config)
-        except OSError as exc:
-            print(f"ERROR: Could not load config from {args.load_config}: {exc}")
-            raise SystemExit(1)
+        if args.batch:
+            print("=== BATCH MODE: Generating multiple files ===\n")
+            counts = [200, 300, 400, 500]
+            files = []
+            for count in counts:
+                print(f"\n{'=' * 60}")
+                filepath = generate_order_csv(
+                    count,
+                    account_ids=_generate_placeholder_account_ids(),
+                    custom_attributes=[],
+                    item_config=default_item_config(),
+                    line_item_custom_attributes=[],
+                )
+                files.append(filepath)
+                print(f"{'=' * 60}\n")
+            print("\n=== BATCH GENERATION COMPLETE ===")
+            print(f"Generated {len(files)} files:")
+            for f in files:
+                print(f"  - {f}")
+            raise SystemExit(0)
 
-        order_count = int(cfg.get("order_count", args.count))
-        account_ids = cfg.get("account_ids", [])
-        if not account_ids:
-            account_ids = prompt_order_account_ids()
-        order_attrs = cfg.get("order_custom_attributes")
-        if order_attrs is None:
-            order_attrs = []
-        item_config = cfg.get("item_config") or default_item_config()
-        line_item_custom_attrs = cfg.get("line_item_custom_attributes") or []
-    else:
-        print("Standalone order CSV generation:")
         order_count = max(1, args.count)
-        account_ids = prompt_order_account_ids()
-        order_attrs = prompt_order_custom_attributes()
-        item_config = prompt_order_item_config()
-        line_item_custom_attrs = prompt_line_item_custom_attributes()
 
-        if args.save_config:
-            config = {
-                "order_count": order_count,
-                "account_ids": account_ids,
-                "order_custom_attributes": order_attrs,
-                "item_config": item_config,
-                "line_item_custom_attributes": line_item_custom_attrs,
-            }
-            save_generation_config(args.save_config, config)
+        if args.load_config:
+            try:
+                cfg = load_generation_config(args.load_config)
+            except OSError as exc:
+                print(f"ERROR: Could not load config from {args.load_config}: {exc}")
+                raise SystemExit(1)
 
-    generate_order_csv(
-        order_count,
-        account_ids=account_ids,
-        custom_attributes=order_attrs,
-        item_config=item_config,
-        line_item_custom_attributes=line_item_custom_attrs,
-    )
+            if args.count == DEFAULT_ORDER_COUNT:
+                order_count = int(cfg.get("order_count", order_count))
+            account_ids = cfg.get("account_ids") or _generate_placeholder_account_ids()
+            order_attrs = cfg.get("order_custom_attributes") or []
+            item_config = cfg.get("item_config") or default_item_config()
+            line_item_custom_attrs = cfg.get("line_item_custom_attributes") or []
+        else:
+            account_ids = prompt_order_account_ids()
+            order_attrs = prompt_order_custom_attributes()
+            item_config = prompt_order_item_config()
+            line_item_custom_attrs = prompt_line_item_custom_attributes()
+
+            if args.save_config:
+                config = {
+                    "order_count": order_count,
+                    "account_ids": account_ids,
+                    "order_custom_attributes": order_attrs,
+                    "item_config": item_config,
+                    "line_item_custom_attributes": line_item_custom_attrs,
+                }
+                save_generation_config(args.save_config, config)
+
+        generate_order_csv(
+            order_count,
+            account_ids=account_ids,
+            custom_attributes=order_attrs,
+            item_config=item_config,
+            line_item_custom_attributes=line_item_custom_attrs,
+        )
+    except KeyboardInterrupt:
+        print("\nOrder generation cancelled by user.")
