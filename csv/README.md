@@ -1,6 +1,6 @@
 # CSV Data Generator Suite
 
-A comprehensive suite of Python scripts for generating realistic dummy CSV data for accounts, orders, and invoices. Perfect for testing, development, and demonstration purposes.
+A comprehensive suite of Python scripts for generating realistic dummy CSV data for accounts, orders, invoices, purchase orders, payments, and purchase invoices. Perfect for testing, development, and demonstration purposes.
 
 ## Table of Contents
 
@@ -118,6 +118,11 @@ When prompted for custom attributes, choose **10** and use the **default set**:
 9. **CA_RADIO** - Single radio selection (A, B, C, D)
 10. **CA_TEXT** - Text sentence (6 words)
 
+### Recommended Default: 3 warehouses
+1. **W-1**
+2. **W-2**
+3. **W-3**
+
 ## Output Location
 
 All generated CSV files are saved to:
@@ -166,6 +171,38 @@ Do you also want to generate an order CSV? (y/n, default n): n
 ```
 
 **Output:** 100 accounts with 2 address lines, 3 contacts each, and 10 default custom attributes.
+
+### Example 2: Generate Purchase Invoices
+
+```bash
+python purchase_invoice_csv_generator.py 50
+```
+
+**Interactive Prompts:**
+```
+Enter supplier account IDs (comma-separated): SUP-001,SUP-002,SUP-003
+Do you want to use a custom form template? (y/N, default n): n
+Do you want tax configuration? (y/N, default n): y
+Enter tax UUID (or press Enter to finish): TAX-UUID-001
+Add another tax UUID? (y/N, default n): y
+Enter tax UUID (or press Enter to finish): TAX-UUID-002
+Add another tax UUID? (y/N, default n): n
+Do you want purchase invoice custom attributes? (y/N, default n): y
+How many purchase invoice custom attributes? (>=1, default 10): 10
+Use default 10 purchase invoice custom attributes? (y/N, default n): y
+Which items should be generated?
+  1) System items only
+  2) Line items only
+  3) Both (default)
+Enter choice (1-3, default 3): 1
+Enter system item IDs (comma-separated, e.g., ITEM-1001,ITEM-1002): ITEM-1001,ITEM-1002,ITEM-1003
+Maximum items per purchase invoice (default 5): 5
+Do you want line item custom attributes? (y/N, default n): y
+How many line item custom attributes? (>=1, default 10): 10
+Use default 10 line item custom attributes? (y/N, default n): y
+```
+
+**Output:** 50 purchase invoices with system items, tax configuration, and 10 default custom attributes.
 
 ----
 

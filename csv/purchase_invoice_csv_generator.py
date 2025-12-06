@@ -7,48 +7,44 @@ from pathlib import Path
 import pandas as pd
 from faker import Faker
 
-try:
-    import payment_csv_generator
-except ImportError:
-    payment_csv_generator = None
-
 fake = Faker("en_AU")
-DEFAULT_CONFIG_PATH = Path(__file__).resolve().parent / "invoice_generator_config.json"
-DEFAULT_INVOICE_COUNT = 200
+DEFAULT_CONFIG_PATH = Path(__file__).resolve().parent / "purchase_invoice_generator_config.json"
+DEFAULT_PURCHASE_INVOICE_COUNT = 200
 
 
-def generate_invoice_id():
-    """Generate unique invoice ID."""
-    return f"CSV-INV-{random.randint(100000, 999999)}"
+def generate_purchase_invoice_id():
+    """Generate unique purchase invoice ID."""
+    return f"CSV-PINV-{random.randint(100000, 999999)}"
 
 
-def generate_invoice_note():
-    """Generate random invoice note text."""
+def generate_purchase_invoice_note():
+    """Generate random purchase invoice note text."""
     notes = [
-        "Payment due upon receipt. Thank you for your business.",
-        "Please remit payment within the specified terms.",
-        "Contact our billing department for any queries.",
-        "Early payment discount available - contact us for details.",
-        "This invoice reflects services rendered as per agreement.",
-        "Net payment terms apply as specified in contract.",
-        "Please reference invoice number when making payment.",
+        "Payment due upon receipt. Thank you for your service.",
+        "Please submit invoice as per payment terms.",
+        "Contact our procurement department for any queries.",
+        "Net payment terms apply as specified in purchase order.",
+        "Please reference purchase invoice number when submitting invoice.",
         "All amounts shown in the specified currency.",
-        "Late fees may apply for overdue payments.",
-        "Thank you for choosing our services.",
+        "Goods received and inspected - approved for payment.",
+        "Thank you for your prompt service and delivery.",
+        "Payment will be processed within agreed terms.",
+        "Invoice approved and forwarded to accounts payable.",
     ]
     return random.choice(notes)
 
 
 def generate_issue_date():
-    """Generate invoice issue date within past 90 days."""
+    """Generate purchase invoice issue date within past 90 days or current/future."""
     today = datetime.now()
-    offset_days = random.randint(-90, 0)
+    # Allow current date or future dates (0 to 90 days in future)
+    offset_days = random.randint(0, 90)
     issue_date = today + timedelta(days=offset_days)
     return issue_date.strftime("%Y-%m-%d")
 
 
 def generate_due_date(issue_date_str):
-    """Generate due date that is greater than issue date."""
+    """Generate due date that is greater than or equal to issue date."""
     issue_date = datetime.strptime(issue_date_str, "%Y-%m-%d")
     days_until_due = random.randint(7, 90)
     due_date = issue_date + timedelta(days=days_until_due)
@@ -73,9 +69,9 @@ def generate_line_item_id():
 
 def generate_line_item_name():
     """Generate line item name for non-system items."""
-    adjectives = ["Premium", "Standard", "Professional", "Enterprise", "Basic", "Advanced", "Custom"]
-    services = ["Service", "Product", "Consultation", "Package", "Bundle", "Solution", "Support"]
-    return f"{random.choice(adjectives)} {random.choice(services)}"
+    adjectives = ["Premium", "Standard", "Professional", "Enterprise", "Basic", "Advanced", "Bulk"]
+    items = ["Materials", "Supplies", "Equipment", "Service", "Parts", "Components", "Resources"]
+    return f"{random.choice(adjectives)} {random.choice(items)}"
 
 
 def generate_line_item_quantity():
@@ -88,36 +84,20 @@ def generate_line_item_price():
     return round(random.uniform(10, 5000), 2)
 
 
-def generate_line_item_note():
-    """Generate line item invoice note."""
-    notes = [
-        "Standard terms apply.",
-        "As per service agreement.",
-        "Monthly subscription fee.",
-        "One-time setup charge.",
-        "Prorated for partial period.",
-        "Annual license renewal.",
-        "Volume discount applied.",
-        "Special promotion pricing.",
-    ]
-    return random.choice(notes)
-
-
 LINE_ITEM_ACCOUNTING_CODES = [
-    "Account Receivable",
+    "Account Payable",
     "Cash and Cash Equivalent",
     "Inventory",
-    "Sales Revenue",
-    "Event Charge",
-    "Deduction",
-    "Alteration",
-    "Cancellation",
-    "Chargeback",
+    "Purchase Expense",
+    "Operating Expense",
+    "Cost of Goods Sold",
+    "Capital Equipment",
+    "Supplies Expense",
 ]
 
 
-def get_default_invoice_custom_attributes(prefix="ca_invoice_attr_"):
-    """Default set of 10 invoice custom attributes."""
+def get_default_purchase_invoice_custom_attributes(prefix="ca_purchase_invoice_attr_"):
+    """Default set of 10 purchase invoice custom attributes."""
     def make_attr(name, attr_type, options=None, quantity_min=None, quantity_max=None):
         return {
             "column_name": f"{prefix}{name}",
@@ -146,7 +126,7 @@ def get_default_invoice_custom_attributes(prefix="ca_invoice_attr_"):
 
 def get_default_line_item_custom_attributes():
     """Default set of 10 line item custom attributes."""
-    return get_default_invoice_custom_attributes(prefix="ca_invoice_item_attr_")
+    return get_default_purchase_invoice_custom_attributes(prefix="ca_purchase_invoice_item_attr_")
 
 
 def _random_value_for_attr(attr):
@@ -191,13 +171,13 @@ def _random_value_for_attr(attr):
 
 
 def default_item_config():
-    """Default configuration for invoice items."""
+    """Default configuration for purchase invoice items."""
     return {
         "include_system_items": True,
         "include_line_items": True,
         "system_identifiers": [],
-        "min_items_per_invoice": 1,
-        "max_items_per_invoice": 5,
+        "min_items_per_purchase_invoice": 1,
+        "max_items_per_purchase_invoice": 5,
     }
 
 
@@ -210,38 +190,36 @@ def _generate_placeholder_account_ids(count=10):
     """Create placeholder account IDs when none provided."""
     ids = []
     for _ in range(count):
-        ids.append(f"CSV-ACC-{random.randint(10000, 99999)}-CUS")
+        ids.append(f"CSV-ACC-{random.randint(10000, 99999)}-SUP")
     return ids
 
 
-def generate_invoice_rows(
-    invoice_count,
+def generate_purchase_invoice_rows(
+    purchase_invoice_count,
     account_ids=None,
     default_currency="AUD",
-    custom_form_template="Default for Sale Invoice",
-    warehouse_config=None,
+    custom_form_template="Default for Purchase Invoice",
     tax_config=None,
     custom_attributes=None,
     item_config=None,
     line_item_custom_attributes=None,
 ):
     """
-    Create invoice rows with line items.
+    Create purchase invoice rows with line items.
 
     Args:
-        invoice_count: Number of invoices to generate
-        account_ids: List of account IDs to associate with invoices
-        warehouse_config: Dict with use_warehouse and warehouses list
+        purchase_invoice_count: Number of purchase invoices to generate
+        account_ids: List of supplier account IDs to associate with purchase invoices
         default_currency: Default currency if not specified
         custom_form_template: Custom form template name
-        tax_config: Dict with tax_codes and tax_rates
-        custom_attributes: Invoice-level custom attributes
+        tax_config: Dict with tax_uuids list
+        custom_attributes: Purchase invoice-level custom attributes
         item_config: Configuration for items (system vs line items)
         line_item_custom_attributes: Line item custom attributes
     """
     account_choices = _derive_account_choices(account_ids, default_currency=default_currency)
     if not account_choices:
-        raise ValueError("No account IDs available to associate with invoices.")
+        raise ValueError("No account IDs available to associate with purchase invoices.")
 
     if custom_attributes is None:
         custom_attributes = []
@@ -250,7 +228,7 @@ def generate_invoice_rows(
     if item_config is None:
         item_config = default_item_config()
     if tax_config is None:
-        tax_config = {"tax_codes": [], "tax_rates": {}}
+        tax_config = {"tax_uuids": []}
 
     include_system = bool(item_config.get("include_system_items", True))
     include_line_items = bool(item_config.get("include_line_items", True))
@@ -261,44 +239,36 @@ def generate_invoice_rows(
     if include_system and not system_identifiers:
         system_identifiers = _fallback_system_identifiers()
 
-    tax_codes = tax_config.get("tax_codes", [])
-    tax_rates = tax_config.get("tax_rates", {})
-
-    # Warehouse configuration
-    if warehouse_config is None:
-        warehouse_config = {"use_warehouse": False, "warehouses": []}
-    use_warehouse = warehouse_config.get("use_warehouse", False)
-    warehouses = warehouse_config.get("warehouses", [])
+    tax_uuids = tax_config.get("tax_uuids", [])
 
     rows = []
-    for idx in range(invoice_count):
+    for idx in range(purchase_invoice_count):
         account_id, currency = random.choice(account_choices)
         issue_date = generate_issue_date()
         due_date = generate_due_date(issue_date)
 
         row = {
-            "invoice_id": generate_invoice_id(),
-            "invoice_origin": f"CSV IMPORT - {idx + 1}",
-            "invoice_currency": currency or default_currency,
-            "invoice_account_id": account_id,
-            "invoice_warehouse": random.choice(warehouses) if use_warehouse and warehouses else "",
-            "invoice_issue_date": issue_date,
-            "invoice_due_date": due_date,
-            "invoice_price_tax_inclusive": "",
-            "invoice_invoice_note": generate_invoice_note(),
-            "invoice_custom_form_template": custom_form_template,
+            "purchase_invoice_id": generate_purchase_invoice_id(),
+            "purchase_invoice_origin": f"CSV IMPORT - {idx + 1}",
+            "purchase_invoice_currency": currency or default_currency,
+            "purchase_invoice_account_id": account_id,
+            "purchase_invoice_issue_date": issue_date,
+            "purchase_invoice_due_date": due_date,
+            "purchase_invoice_price_tax_inclusive": "",
+            "purchase_invoice_purchase_invoice_note": generate_purchase_invoice_note(),
+            "purchase_invoice_custom_form_template": custom_form_template,
         }
 
-        # Randomly set invoice_price_tax_inclusive for some rows
+        # Randomly set purchase_invoice_price_tax_inclusive for some rows
         if random.random() < 0.3:
-            row["invoice_price_tax_inclusive"] = "TRUE"
+            row["purchase_invoice_price_tax_inclusive"] = "TRUE"
 
-        # Apply invoice-level custom attributes BEFORE line items (for proper column order)
+        # Apply purchase invoice-level custom attributes BEFORE line items (for proper column order)
         for attr in custom_attributes:
             row[attr["column_name"]] = _random_value_for_attr(attr)
 
-        min_items = max(1, int(item_config.get("min_items_per_invoice", 1)))
-        max_items = max(min_items, int(item_config.get("max_items_per_invoice", min_items)))
+        min_items = max(1, int(item_config.get("min_items_per_purchase_invoice", 1)))
+        max_items = max(min_items, int(item_config.get("max_items_per_purchase_invoice", min_items)))
         total_items = random.randint(min_items, max_items)
 
         for item_idx in range(total_items):
@@ -314,57 +284,40 @@ def generate_invoice_rows(
 
             if is_system_item:
                 identifier = random.choice(system_identifiers)
-                item_row["invoice_line_item_id"] = identifier
-                item_row["invoice_line_item_name"] = ""
+                item_row["purchase_invoice_line_item_id"] = identifier
+                item_row["purchase_invoice_item_name"] = ""
             elif include_line_items:
-                item_row["invoice_line_item_id"] = ""
-                item_row["invoice_line_item_name"] = generate_line_item_name()
+                item_row["purchase_invoice_line_item_id"] = ""
+                item_row["purchase_invoice_item_name"] = generate_line_item_name()
 
-            item_row["invoice_line_item_quantity"] = generate_line_item_quantity()
-            item_row["invoice_line_item_price"] = generate_line_item_price()
-            item_row["invoice_line_item_invoice_note"] = generate_line_item_note()
-            item_row["invoice_line_item_accounting_code"] = random.choice(LINE_ITEM_ACCOUNTING_CODES)
+            item_row["purchase_invoice_line_item_order_quantity"] = generate_line_item_quantity()
+            item_row["purchase_invoice_line_item_price"] = generate_line_item_price()
 
-            # Flat discount (random rows, not more than price)
-            if random.random() < 0.15:
-                max_discount = item_row["invoice_line_item_price"] * 0.8
-                item_row["invoice_line_item_flat_discount"] = round(random.uniform(5, max_discount), 2)
+            # Tax UUID (randomly assign from provided list or skip)
+            if tax_uuids and random.random() < 0.8:
+                item_row["purchase_invoice_line_item_tax_uuid"] = random.choice(tax_uuids)
             else:
-                item_row["invoice_line_item_flat_discount"] = ""
-
-            # Tax code and rate
-            if tax_codes:
-                tax_code = random.choice(tax_codes)
-                item_row["invoice_line_item_tax_code"] = tax_code
-                item_row["invoice_line_item_tax_rate"] = tax_rates.get(tax_code, "")
-            else:
-                item_row["invoice_line_item_tax_code"] = ""
-                item_row["invoice_line_item_tax_rate"] = ""
+                item_row["purchase_invoice_line_item_tax_uuid"] = ""
 
             # Tax exempt (random rows)
             if random.random() < 0.1:
-                item_row["invoice_line_item_tax_exempt"] = "TRUE"
+                item_row["purchase_invoice_line_item_tax_exempt"] = "TRUE"
             else:
-                item_row["invoice_line_item_tax_exempt"] = ""
-
-            # Tax inclusive based on (random rows)
-            if random.random() < 0.2:
-                item_row["invoice_line_item_tax_inclusive_based_on"] = "TRUE"
-            else:
-                item_row["invoice_line_item_tax_inclusive_based_on"] = ""
+                item_row["purchase_invoice_line_item_tax_exempt"] = ""
 
             # Apply line item custom attributes (after all line item fields)
             for attr in line_item_custom_attributes:
                 item_row[attr["column_name"]] = _random_value_for_attr(attr)
 
-            # Blank out invoice-level fields for additional items (except mandatory fields)
+            # Blank out purchase invoice-level fields for additional items (except mandatory fields)
             if item_idx > 0:
                 for key in list(item_row.keys()):
-                    if key in ("invoice_id", "invoice_account_id", "invoice_currency", "invoice_warehouse", "invoice_issue_date", "invoice_due_date"):
+                    if key in ("purchase_invoice_id", "purchase_invoice_account_id", "purchase_invoice_currency",
+                               "purchase_invoice_issue_date", "purchase_invoice_due_date"):
                         continue
-                    if key.startswith("invoice_line_item_"):
+                    if key.startswith("purchase_invoice_line_item_"):
                         continue
-                    if key.startswith("ca_invoice_item_attr_"):
+                    if key.startswith("ca_purchase_invoice_item_attr_"):
                         continue
                     item_row[key] = ""
 
@@ -373,24 +326,22 @@ def generate_invoice_rows(
     return rows
 
 
-def generate_invoice_csv(
-    invoice_count,
+def generate_purchase_invoice_csv(
+    purchase_invoice_count,
     account_ids=None,
     default_currency="AUD",
-    custom_form_template="Default for Sale Invoice",
-    warehouse_config=None,
+    custom_form_template="Default for Purchase Invoice",
     tax_config=None,
     custom_attributes=None,
     item_config=None,
     line_item_custom_attributes=None,
 ):
-    """Generate an invoice CSV file and return its filepath and invoice IDs."""
-    rows = generate_invoice_rows(
-        invoice_count,
+    """Generate a purchase invoice CSV file and return its filepath and purchase invoice IDs."""
+    rows = generate_purchase_invoice_rows(
+        purchase_invoice_count,
         account_ids=account_ids,
         default_currency=default_currency,
         custom_form_template=custom_form_template,
-        warehouse_config=warehouse_config,
         tax_config=tax_config,
         custom_attributes=custom_attributes,
         item_config=item_config,
@@ -398,8 +349,8 @@ def generate_invoice_csv(
     )
     df = pd.DataFrame(rows).fillna("")
 
-    # Prefix date columns with single quote to prevent Excel auto-conversion
-    date_columns = ['invoice_issue_date', 'invoice_due_date']
+    # Prefix date columns with tab character to prevent Excel auto-conversion
+    date_columns = ['purchase_invoice_issue_date', 'purchase_invoice_due_date']
 
     # Add custom attribute date columns
     if custom_attributes:
@@ -411,32 +362,32 @@ def generate_invoice_csv(
             if attr.get('type') == 'date':
                 date_columns.append(attr['column_name'])
 
-    # Prefix dates with tab character to force text format in Excel
+    # Prefix dates with tab character for Excel
     for col in date_columns:
         if col in df.columns:
             df[col] = df[col].apply(lambda x: f"\t{x}" if x and x != "" else x)
 
     timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
-    filename = f"INVOICE_DUMMY_DATA_{invoice_count}_{timestamp}.csv"
+    filename = f"PURCHASE_INVOICE_DUMMY_DATA_{purchase_invoice_count}_{timestamp}.csv"
     filepath = f"C:\\Users\\Rahman\\Downloads\\{filename}"
     df.to_csv(filepath, index=False, quoting=1)  # QUOTE_MINIMAL
 
-    print(f"\nSuccessfully generated {invoice_count} invoices!")
+    print(f"\nSuccessfully generated {purchase_invoice_count} purchase invoices!")
     print(f"File saved to: {filepath}")
     if rows:
         print("\nSample data:")
-        print(f"  First Invoice ID: {rows[0]['invoice_id']}")
-        print(f"  First Account ID: {rows[0]['invoice_account_id']}")
+        print(f"  First Purchase Invoice ID: {rows[0]['purchase_invoice_id']}")
+        print(f"  First Account ID: {rows[0]['purchase_invoice_account_id']}")
 
-    invoice_ids = list({row['invoice_id'] for row in rows if row.get('invoice_id')})
-    print(f"  Total unique invoice IDs: {len(invoice_ids)}")
-    return filepath, invoice_ids
+    purchase_invoice_ids = list({row['purchase_invoice_id'] for row in rows if row.get('purchase_invoice_id')})
+    print(f"  Total unique purchase invoice IDs: {len(purchase_invoice_ids)}")
+    return filepath, purchase_invoice_ids
 
 
-def prompt_invoice_account_ids():
-    """Prompt the user for account IDs to attach to invoices."""
+def prompt_purchase_invoice_account_ids():
+    """Prompt the user for supplier account IDs to attach to purchase invoices."""
     while True:
-        raw = input("Enter account IDs (comma-separated): ").strip()
+        raw = input("Enter supplier account IDs (comma-separated): ").strip()
         account_ids = [value.strip() for value in raw.split(",") if value.strip()]
         if account_ids:
             return account_ids
@@ -447,37 +398,11 @@ def prompt_custom_form_template():
     """Prompt user for custom form template with default."""
     use_custom = input("Do you want to use a custom form template? (y/N, default n): ").strip().lower()
     if use_custom not in ("y", "yes"):
-        return "Default for Sale Invoice"
+        return "Default for Purchase Invoice"
 
-    default = "Default for Sale Invoice"
+    default = "Default for Purchase Invoice"
     raw = input(f"Enter custom form template (default: {default}): ").strip()
     return raw if raw else default
-
-
-def prompt_warehouse_config():
-    """
-    Prompt user for warehouse configuration.
-
-    Returns dict with:
-        use_warehouse: bool
-        warehouses: list[str]
-    """
-    use_warehouse = input("Do you want warehouse column? (y/N, default n): ").strip().lower()
-    if use_warehouse not in ("y", "yes"):
-        return {"use_warehouse": False, "warehouses": []}
-
-    use_default = input("Do you want to use default warehouses? (Y/n, default y): ").strip().lower()
-    if use_default in ("", "y", "yes"):
-        warehouses = ["W-1", "W-2", "W-3"]
-    else:
-        while True:
-            raw = input("Enter warehouse names (comma-separated, e.g., W-1,W-2,W-3): ").strip()
-            warehouses = [w.strip() for w in raw.split(",") if w.strip()]
-            if warehouses:
-                break
-            print("Please enter at least one warehouse name.")
-
-    return {"use_warehouse": True, "warehouses": warehouses}
 
 
 def prompt_tax_config():
@@ -485,41 +410,29 @@ def prompt_tax_config():
     Prompt user for tax configuration (UUID-based).
 
     Returns dict with:
-        tax_codes: list[str]
-        tax_rates: dict[str, float]
+        tax_uuids: list[str]
     """
     use_tax = input("Do you want tax configuration? (y/N, default n): ").strip().lower()
     if use_tax not in ("y", "yes"):
-        return {"tax_codes": [], "tax_rates": {}}
+        return {"tax_uuids": []}
 
-    tax_codes = []
-    tax_rates = {}
+    tax_uuids = []
 
     while True:
-        code = input("Enter tax code UUID (or press Enter to finish): ").strip()
-        if not code:
+        uuid = input("Enter tax UUID (or press Enter to finish): ").strip()
+        if not uuid:
             break
+        tax_uuids.append(uuid)
 
-        while True:
-            rate_str = input(f"Enter tax rate for {code} (e.g., 10 for 10%): ").strip()
-            try:
-                rate = float(rate_str)
-                break
-            except ValueError:
-                print("Please enter a valid number.")
-
-        tax_codes.append(code)
-        tax_rates[code] = rate
-
-        if tax_codes:
-            more = input("Add another tax code? (y/N, default n): ").strip().lower()
+        if tax_uuids:
+            more = input("Add another tax UUID? (y/N, default n): ").strip().lower()
             if more not in ("y", "yes"):
                 break
 
-    return {"tax_codes": tax_codes, "tax_rates": tax_rates}
+    return {"tax_uuids": tax_uuids}
 
 
-def prompt_invoice_item_config():
+def prompt_purchase_invoice_item_config():
     """
     Prompt for system vs line item generation settings.
     """
@@ -562,10 +475,10 @@ def prompt_invoice_item_config():
                 break
             print("Please enter at least one system item ID.")
 
-    # Max items per invoice (min is always 1)
+    # Max items per purchase invoice (min is always 1)
     min_items = 1
     while True:
-        max_raw = input("Maximum items per invoice (default 5): ").strip()
+        max_raw = input("Maximum items per purchase invoice (default 5): ").strip()
         if max_raw == "":
             max_items = 5
             break
@@ -577,22 +490,22 @@ def prompt_invoice_item_config():
         except ValueError:
             print("Please enter a valid number.")
 
-    config["min_items_per_invoice"] = min_items
-    config["max_items_per_invoice"] = max_items
+    config["min_items_per_purchase_invoice"] = min_items
+    config["max_items_per_purchase_invoice"] = max_items
 
     return config
 
 
-def prompt_invoice_custom_attributes():
+def prompt_purchase_invoice_custom_attributes():
     """
-    Prompt user for invoice-level custom attributes (default: 10).
+    Prompt user for purchase invoice-level custom attributes (default: 10).
     """
-    use_attrs = input("Do you want invoice custom attributes? (y/N, default n): ").strip().lower()
+    use_attrs = input("Do you want purchase invoice custom attributes? (y/N, default n): ").strip().lower()
     if use_attrs not in ("y", "yes"):
         return []
 
     while True:
-        raw = input("How many invoice custom attributes? (>=1, default 10): ").strip()
+        raw = input("How many purchase invoice custom attributes? (>=1, default 10): ").strip()
         if raw == "":
             count = 10
             break
@@ -606,11 +519,11 @@ def prompt_invoice_custom_attributes():
         print("Please enter a whole number 1 or greater.")
 
     if count == 10:
-        default_choice = input("Use default 10 invoice custom attributes? (y/N, default n): ").strip().lower()
+        default_choice = input("Use default 10 purchase invoice custom attributes? (y/N, default n): ").strip().lower()
         if default_choice in ("y", "yes"):
-            return get_default_invoice_custom_attributes()
+            return get_default_purchase_invoice_custom_attributes()
 
-    return collect_custom_attrs("ca_invoice_attr_", count)
+    return collect_custom_attrs("ca_purchase_invoice_attr_", count)
 
 
 def prompt_line_item_custom_attributes():
@@ -640,7 +553,7 @@ def prompt_line_item_custom_attributes():
         if default_choice in ("y", "yes"):
             return get_default_line_item_custom_attributes()
 
-    return collect_custom_attrs("ca_invoice_item_attr_", count)
+    return collect_custom_attrs("ca_purchase_invoice_item_attr_", count)
 
 
 def collect_custom_attrs(prefix, count):
@@ -760,60 +673,6 @@ def collect_custom_attrs(prefix, count):
     return attrs
 
 
-def prompt_payment_generation():
-    """Prompt user if they want to generate payment CSV along with invoice CSV."""
-    response = input("\nDo you want to generate payment CSV along with invoice CSV? (y/N, default: n): ").strip().lower()
-    if response not in ("y", "yes"):
-        return None
-
-    while True:
-        payment_count_input = input("Enter number of payment records (default: same as invoice count): ").strip()
-        if not payment_count_input:
-            return {"payment_count": None, "custom_attrs": 10, "multi_invoice": False}
-        try:
-            payment_count = int(payment_count_input)
-            if payment_count > 0:
-                break
-            print("Please enter a positive number.")
-        except ValueError:
-            print("Please enter a valid number.")
-
-    custom_attrs_input = input("Enter number of custom attributes for payment (default: 10): ").strip()
-    custom_attrs = 10
-    if custom_attrs_input:
-        try:
-            custom_attrs = int(custom_attrs_input)
-        except ValueError:
-            print("Invalid number, using default: 10")
-            custom_attrs = 10
-
-    multi_invoice_input = input("Enable multiple invoices per payment? (y/N, default: n): ").strip().lower()
-    multi_invoice = multi_invoice_input in ("y", "yes")
-
-    processors_input = input("Enter payment processors (comma-separated, default: Cash): ").strip()
-    if not processors_input:
-        payment_processors = ["Cash"]
-    else:
-        payment_processors = [p.strip() for p in processors_input.split(",") if p.strip()]
-
-    custom_attrs_count_input = input("Enter number of payment custom attributes (0-10, default: 0): ").strip()
-    if not custom_attrs_count_input or custom_attrs_count_input == "0":
-        custom_attributes = []
-    elif custom_attrs_count_input == "10":
-        custom_attributes = payment_csv_generator.get_default_custom_attributes()
-    else:
-        print("Note: Custom attributes will use simple default values for invoice-triggered payment generation.")
-        custom_attributes = []
-
-    return {
-        "payment_count": payment_count,
-        "custom_attrs": custom_attrs,
-        "multi_invoice": multi_invoice,
-        "payment_processors": payment_processors,
-        "custom_attributes": custom_attributes,
-    }
-
-
 def save_generation_config(path, config):
     """Save generation configuration to JSON."""
     try:
@@ -832,18 +691,18 @@ def load_generation_config(path):
 
 if __name__ == "__main__":
     try:
-        parser = argparse.ArgumentParser(description="Generate invoice CSV data.")
+        parser = argparse.ArgumentParser(description="Generate purchase invoice CSV data.")
         parser.add_argument(
             "count",
             type=int,
             nargs="?",
-            default=DEFAULT_INVOICE_COUNT,
-            help=f"Number of invoices to generate (default: {DEFAULT_INVOICE_COUNT})",
+            default=DEFAULT_PURCHASE_INVOICE_COUNT,
+            help=f"Number of purchase invoices to generate (default: {DEFAULT_PURCHASE_INVOICE_COUNT})",
         )
         parser.add_argument(
             "--batch",
             action="store_true",
-            help="Generate multiple files: 200, 300, 400, and 500 invoices",
+            help="Generate multiple files: 200, 300, 400, and 500 purchase invoices",
         )
         parser.add_argument(
             "--save-config",
@@ -868,10 +727,9 @@ if __name__ == "__main__":
             files = []
             for count in counts:
                 print(f"\n{'=' * 60}")
-                filepath, _ = generate_invoice_csv(
+                filepath, _ = generate_purchase_invoice_csv(
                     count,
                     account_ids=_generate_placeholder_account_ids(),
-                    warehouse_config={"use_warehouse": False, "warehouses": []},
                     custom_attributes=[],
                     item_config=default_item_config(),
                     line_item_custom_attributes=[],
@@ -884,7 +742,7 @@ if __name__ == "__main__":
                 print(f"  - {f}")
             raise SystemExit(0)
 
-        invoice_count = max(1, args.count)
+        purchase_invoice_count = max(1, args.count)
 
         if args.load_config:
             try:
@@ -893,67 +751,42 @@ if __name__ == "__main__":
                 print(f"ERROR: Could not load config from {args.load_config}: {exc}")
                 raise SystemExit(1)
 
-            if args.count == DEFAULT_INVOICE_COUNT:
-                invoice_count = int(cfg.get("invoice_count", invoice_count))
+            if args.count == DEFAULT_PURCHASE_INVOICE_COUNT:
+                purchase_invoice_count = int(cfg.get("purchase_invoice_count", purchase_invoice_count))
             account_ids = cfg.get("account_ids") or _generate_placeholder_account_ids()
-            custom_form_template = cfg.get("custom_form_template", "Default for Sale Invoice")
-            warehouse_cfg = cfg.get("warehouse_config") or {"use_warehouse": False, "warehouses": []}
-            tax_cfg = cfg.get("tax_config") or {"tax_codes": [], "tax_rates": {}}
-            invoice_attrs = cfg.get("invoice_custom_attributes") or []
+            custom_form_template = cfg.get("custom_form_template", "Default for Purchase Invoice")
+            tax_cfg = cfg.get("tax_config") or {"tax_uuids": []}
+            purchase_invoice_attrs = cfg.get("purchase_invoice_custom_attributes") or []
             item_config = cfg.get("item_config") or default_item_config()
             line_item_custom_attrs = cfg.get("line_item_custom_attributes") or []
-            payment_config = None
         else:
-            account_ids = prompt_invoice_account_ids()
+            account_ids = prompt_purchase_invoice_account_ids()
             custom_form_template = prompt_custom_form_template()
-            warehouse_cfg = prompt_warehouse_config()
             tax_cfg = prompt_tax_config()
-            invoice_attrs = prompt_invoice_custom_attributes()
-            item_config = prompt_invoice_item_config()
+            purchase_invoice_attrs = prompt_purchase_invoice_custom_attributes()
+            item_config = prompt_purchase_invoice_item_config()
             line_item_custom_attrs = prompt_line_item_custom_attributes()
-
-            payment_config = None
-            if payment_csv_generator is not None:
-                payment_config = prompt_payment_generation()
 
             if args.save_config:
                 config = {
-                    "invoice_count": invoice_count,
+                    "purchase_invoice_count": purchase_invoice_count,
                     "account_ids": account_ids,
                     "custom_form_template": custom_form_template,
-                    "warehouse_config": warehouse_cfg,
                     "tax_config": tax_cfg,
-                    "invoice_custom_attributes": invoice_attrs,
+                    "purchase_invoice_custom_attributes": purchase_invoice_attrs,
                     "item_config": item_config,
                     "line_item_custom_attributes": line_item_custom_attrs,
                 }
                 save_generation_config(args.save_config, config)
 
-        invoice_filepath, invoice_ids = generate_invoice_csv(
-            invoice_count,
+        generate_purchase_invoice_csv(
+            purchase_invoice_count,
             account_ids=account_ids,
             custom_form_template=custom_form_template,
-            warehouse_config=warehouse_cfg,
             tax_config=tax_cfg,
-            custom_attributes=invoice_attrs,
+            custom_attributes=purchase_invoice_attrs,
             item_config=item_config,
             line_item_custom_attributes=line_item_custom_attrs,
         )
-
-        if payment_config and payment_csv_generator is not None:
-            print("\n" + "=" * 60)
-            print("Generating Payment CSV...")
-            print("=" * 60)
-            payment_count = payment_config["payment_count"] if payment_config["payment_count"] else invoice_count
-            try:
-                payment_csv_generator.generate_payment_csv(
-                    payment_count,
-                    invoice_ids=invoice_ids,
-                    custom_attributes=payment_config.get("custom_attributes", []),
-                    multi_invoice_enabled=payment_config["multi_invoice"],
-                    payment_processors=payment_config.get("payment_processors", ["Cash"]),
-                )
-            except Exception as e:
-                print(f"WARNING: Failed to generate payment CSV: {e}")
     except KeyboardInterrupt:
-        print("\nInvoice generation cancelled by user.")
+        print("\nPurchase invoice generation cancelled by user.")
