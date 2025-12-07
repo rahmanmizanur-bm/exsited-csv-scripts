@@ -9,7 +9,7 @@ from faker import Faker
 
 fake = Faker("en_AU")
 DEFAULT_CONFIG_PATH = Path(__file__).resolve().parent / "purchase_payment_generator_config.json"
-DEFAULT_PURCHASE_PAYMENT_COUNT = 200
+DEFAULT_PURCHASE_PAYMENT_COUNT = 100
 
 
 def generate_purchase_payment_id(row_num):
@@ -519,7 +519,7 @@ if __name__ == "__main__":
             type=int,
             nargs="?",
             default=DEFAULT_PURCHASE_PAYMENT_COUNT,
-            help=f"Number of purchase payment records to generate (default: {DEFAULT_PURCHASE_PAYMENT_COUNT})",
+            help=f"Number of purchase payment records to generate (default: 100)",
         )
         parser.add_argument(
             "--purchase-invoice-csv",
