@@ -1,6 +1,6 @@
 # CSV Data Generator Suite
 
-A comprehensive suite of Python scripts for generating realistic dummy CSV data for accounts, orders, invoices, purchase orders, payments, and purchase invoices. Perfect for testing, development, and demonstration purposes.
+A comprehensive suite of Python scripts for generating realistic dummy CSV data for accounts, orders, invoices, purchase orders, payments, purchase invoices, and purchase payments. Perfect for testing, development, and demonstration purposes.
 
 ## Table of Contents
 
@@ -203,6 +203,30 @@ Use default 10 line item custom attributes? (y/N, default n): y
 ```
 
 **Output:** 50 purchase invoices with system items, tax configuration, and 10 default custom attributes.
+
+### Example 3: Generate Purchase Payments
+
+```bash
+python purchase_payment_csv_generator.py 100
+```
+
+**Interactive Prompts:**
+```
+Purchase Payment Invoice Configuration:
+1. Load from existing purchase invoice CSV file
+2. Enter purchase invoice IDs manually (comma-separated)
+Choose option (1/2, default: 2): 2
+Enter purchase invoice IDs (comma-separated): CSV-PINV-001,CSV-PINV-002,CSV-PINV-003
+Do you want purchase payment custom attributes? (y/N, default n): y
+How many purchase payment custom attributes? (>=1, default 10): 10
+Use default 10 purchase payment custom attributes? (y/N, default n): y
+Do you want multiple purchase invoices per payment? (y/N, default: n): n
+
+Payment Processor Configuration:
+Enter payment processors (comma-separated, default: Cash): Cash,Bank Transfer,Check
+```
+
+**Output:** 100 purchase payment records with purchase invoice references, payment processors, and 10 default custom attributes.
 
 ----
 
