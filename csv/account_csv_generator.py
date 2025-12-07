@@ -293,7 +293,6 @@ def blank_contact(index):
 def get_default_custom_attributes():
     """Return the default set of 10 custom attributes when requested."""
     dropdown_options = ["A", "B", "C", "D"]
-    radio_options = [str(i) for i in range(1, 51)]
 
     def make_attr(name, attr_type, options=None, quantity_min=None, quantity_max=None):
         return {
@@ -315,7 +314,7 @@ def get_default_custom_attributes():
         make_attr("CA_MONEY", "money"),
         make_attr("CA_QUANTITY", "quantity", quantity_min=1, quantity_max=50),
         make_attr("CA_NUMBER", "number"),
-        make_attr("CA_RADIO", "radio", options=radio_options),
+        make_attr("CA_RADIO", "radio", options=dropdown_options),
         make_attr("CA_TEXT", "text"),
     ]
 
